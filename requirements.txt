@@ -1,0 +1,29 @@
+--extra-index-url https://pypi.nvidia.com
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch>=2.7.0
+torchvision
+torchaudio
+torchmetrics
+torchdiffeq
+einops
+eindex
+decord
+ray[air]
+wandb
+pyrefly
+jaxtyping
+typeguard
+diffusers
+transformers
+datasets
+webdataset
+huggingface_hub
+tqdm
+torch-ema
+accelerate
+sentencepiece
+#robotic 
+mujoco
+robosuite
+# robocasa - install from source: git clone https://github.com/robocasa/robocasa.git && pip install -e . # do later for this for eval 
+h5py

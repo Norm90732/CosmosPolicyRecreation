@@ -1,0 +1,19 @@
+name: cosmosPolicy
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.12
+  - pip
+  - numpy
+  - pandas
+  - matplotlib
+  - ipykernel
+  - scikit-learn
+  - hydra-core
+  - omegaconf
+  - scikit-image
+  - pillow
+  - ruff
+  - beartype
+  - ffmpeg
