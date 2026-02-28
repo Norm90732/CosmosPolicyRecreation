@@ -80,7 +80,9 @@ def successOnlyPreprocess(queue, workerId: int, cfg: DictConfig) -> None:
                             futureValue = monteReturnsArray[futureTidx]
 
                             # action state collection
-                            collectedActions = demo["actions"][tIdx : tIdx + 32, :actionDim].astype(np.float32)
+                            collectedActions = demo["actions"][
+                                tIdx : tIdx + 32, :actionDim
+                            ].astype(np.float32)
 
                             # padding and repeat
 
@@ -218,7 +220,9 @@ def allScenesPreprocess(queue, workerId: int, cfg: DictConfig) -> None:
                         futureTidx = min(tIdx + 32, numSteps - 1)
                         futureValue = monteReturnsArray[futureTidx]
 
-                        collectedActions = f["actions"][tIdx : tIdx + 32, :actionDim].astype(np.float32)
+                        collectedActions = f["actions"][
+                            tIdx : tIdx + 32, :actionDim
+                        ].astype(np.float32)
 
                         if len(collectedActions) < 32:
                             diff = 32 - len(collectedActions)
@@ -232,14 +236,22 @@ def allScenesPreprocess(queue, workerId: int, cfg: DictConfig) -> None:
                         futureProprio = f["proprio"][futureTidx].astype(np.float32)
 
                         if isJpeg is True:
-                            currentWristImg = f["wrist_images_jpeg"][tIdx]
-                            futureWristImg = f["wrist_images_jpeg"][futureTidx]
+                            currentWristImg = h5pyToBytes(f["wrist_images_jpeg"][tIdx])
+                            futureWristImg = h5pyToBytes(
+                                f["wrist_images_jpeg"][futureTidx]
+                            )
 
-                            currentLeftImg = f["primary_images_jpeg"][tIdx]
-                            futureLeftImg = f["primary_images_jpeg"][futureTidx]
+                            currentLeftImg = h5pyToBytes(f["primary_images_jpeg"][tIdx])
+                            futureLeftImg = h5pyToBytes(
+                                f["primary_images_jpeg"][futureTidx]
+                            )
 
-                            currentRightImg = f["secondary_images_jpeg"][tIdx]
-                            futureRightImg = f["secondary_images_jpeg"][futureTidx]
+                            currentRightImg = h5pyToBytes(
+                                f["secondary_images_jpeg"][tIdx]
+                            )
+                            futureRightImg = h5pyToBytes(
+                                f["secondary_images_jpeg"][futureTidx]
+                            )
                         else:
                             currentWristImg = f["wrist_images"][tIdx]
                             currentWristImg = numpyToBytes(currentWristImg)
@@ -311,7 +323,7 @@ def fileNameExtractor(cfg: DictConfig, subFolder: str) -> dict[str, list[str]]:
 
     for entry in successOnly.iterdir():
         if entry.is_dir():
-            directoryDictionary[entry.name] = [str(p) for p in entry.glob("*/*.hdf5")]
+            directoryDictionary[entry.name] = [str(p) for p in entry.rglob("*.hdf5")]
             print(f"Added {entry.name} directory")
         else:
             print(f"Did not add {entry.name}")
@@ -354,6 +366,12 @@ def numpyToBytes(array: np.ndarray) -> bytes:
     buffer = io.BytesIO()
     image.save(buffer, format="JPEG", quality=95)
     return buffer.getvalue()
+
+
+def h5pyToBytes(b) -> bytes:
+    if isinstance(b, bytes):
+        return b
+    return b.tobytes()
 
 
 @hydra.main(version_base=None, config_path="../configs", config_name="config")

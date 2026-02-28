@@ -1,6 +1,6 @@
 downloadDir: "/blue/weishao/normansmith/data"
-allScenesOutputDir: 
-allSuccessOutputDir: 
+allScenesOutputDir: "/blue/weishao/normansmith/data/shards/all_scenes"
+allSuccessOutputDir: /blue/weishao/normansmith/data/shards/success_only
 
 numWorkers: 10
 
