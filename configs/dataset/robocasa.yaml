@@ -2,6 +2,7 @@ downloadDir: "/blue/weishao/normansmith/data"
 allScenesOutputDir: 
 allSuccessOutputDir: 
 
+numWorkers: 10
 
 monteCarloRewards:
   discountFactor: 0.99
