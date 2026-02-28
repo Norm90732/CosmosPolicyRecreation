@@ -273,7 +273,7 @@ def allScenesPreprocess(queue, workerId: int, cfg: DictConfig) -> None:
 
                         fileNameClean = Path(path).stem
                         sample = {
-                            "__key__": f"{taskName}_{fileNameClean}_isSuccess{terminalReward}_{tIdx:05d}",
+                            "__key__": f"{taskName}_{fileNameClean}_isSuccess{int(terminalReward)}_{tIdx:05d}",
                             "futureValue.npy": futureValue,
                             "collectedActions.npy": collectedActions,
                             "currentProprio.npy": currentProprio,
