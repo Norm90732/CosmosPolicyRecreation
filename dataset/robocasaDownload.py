@@ -6,6 +6,8 @@ import hydra
 """
 Downloads RoboCasa Dataset to downloadDir from config.dataset
 """
+
+
 def downloadRoboCasa(cfg: DictConfig) -> None:
     snapshot_download(
         repo_id="nvidia/RoboCasa-Cosmos-Policy",
