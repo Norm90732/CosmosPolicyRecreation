@@ -5,7 +5,7 @@ from models.cosmosLoader import EncoderVAE
 import json
 from einops import rearrange, repeat
 from torch import Tensor
-
+import math
 """
 Buiilder of Latent Sequence
 """
@@ -44,7 +44,6 @@ class LatentSequenceBuilder(torch.nn.Module):
         imgTensor = repeat(imgTensor, "b c t h w -> b c (four t) h w", four=4)
         return imgTensor
 
-    # Images should be normalized between -1 to 1 in the dataloader.
     def _buildVAEInput(
         self,
         currentWristImg,
@@ -127,20 +126,20 @@ class LatentSequenceBuilder(torch.nn.Module):
 
         eps = 1e-8
         currentPropScaled = (currentProprio - self.propMin) / (
-            (self.propMax - self.propMin) + eps # pyrefly:ignore
-        )  
+            (self.propMax - self.propMin) + eps  # pyrefly:ignore
+        )
         currentPropNorm = (2.0 * currentPropScaled) - 1.0
         currentPropNorm = torch.clamp(currentPropNorm, min=-1.0, max=1.0)
 
         actionsScaled = (collectedActions - self.actMin) / (
-            (self.actMax - self.actMin) + eps # pyrefly:ignore
-        )  
+            (self.actMax - self.actMin) + eps  # pyrefly:ignore
+        )
         actionsNorm = (2.0 * actionsScaled) - 1.0
         actionsNorm = torch.clamp(actionsNorm, min=-1.0, max=1.0)
 
         futurePropScaled = (futureProprio - self.propMin) / (
-            (self.propMax - self.propMin) + eps # pyrefly:ignore
-        )  
+            (self.propMax - self.propMin) + eps  # pyrefly:ignore
+        )
         futurePropNorm = (2.0 * futurePropScaled) - 1.0
         futurePropNorm = torch.clamp(futurePropNorm, min=-1.0, max=1.0)
 
@@ -151,7 +150,7 @@ class LatentSequenceBuilder(torch.nn.Module):
         flattenedTensor = torch.flatten(input=inputTensor, start_dim=1)
 
         flattenedLength = flattenedTensor.shape[-1]
-        repeatedLength = int(torch.ceil(desiredSize / flattenedLength))
+        repeatedLength = math.ceil(desiredSize / flattenedLength)
         expanded = repeat(
             flattenedTensor, "b r -> b (n r)", r=flattenedLength, n=repeatedLength
         )
@@ -208,7 +207,7 @@ class LatentSequenceBuilder(torch.nn.Module):
             futureWristImg=futureWristImg,
             futureLeftImg=futureLeftImg,
             futureRightImg=futureRightImg,
-        )
+        ).to(torch.bfloat16)
 
         vaeOutput = self._VAEForward(inputToVAE)
 
@@ -223,17 +222,17 @@ class LatentSequenceBuilder(torch.nn.Module):
         # Latent Injection
         # Into index 1, 5,6,10
         # B, C, 11, H, W
-        vaeOutput[:, :, 1, :, :] = reshapedCurrentProp
-        vaeOutput[:, :, 5, :, :] = reshapedActions
-        vaeOutput[:, :, 6, :, :] = reshapedFutureProp
-
-        vaeOutput[:, :, 10, :, :] = reshapedValues
+        vaeOutput = vaeOutput.clone()
+        vaeOutput[:, :, 1, :, :] = reshapedCurrentProp.to(vaeOutput.dtype)
+        vaeOutput[:, :, 5, :, :] = reshapedActions.to(vaeOutput.dtype)
+        vaeOutput[:, :, 6, :, :] = reshapedFutureProp.to(vaeOutput.dtype)
+        vaeOutput[:, :, 10, :, :] = reshapedValues.to(vaeOutput.dtype)
 
         # conditionVideoMask creation
         B, _, T, H, W = vaeOutput.shape
         conditionVideoMask = torch.zeros(
-            (B, 1, T, H, W), device=self.device, dtype=torch.bfloat16
-        )
+    (B, 1, T, H, W), device=vaeOutput.device, dtype=torch.bfloat16
+)
         conditionVideoMask[:, :, :5, :, :] = 1.0
 
         return vaeOutput, conditionVideoMask

@@ -374,26 +374,28 @@ def h5pyToBytes(b) -> bytes:
     return b.tobytes()
 
 
-
 def main() -> None:
-    cfg = OmegaConf.load("configs/config.yaml") #pyrefly:ignore
+    cfg = OmegaConf.load("configs/config.yaml")  # pyrefly:ignore
     ray.init(ignore_reinit_error=True)
 
-    allSuccesses = fileNameExtractor(cfg, "success_only") #pyrefly:ignore
+    allSuccesses = fileNameExtractor(cfg, "success_only")  # pyrefly:ignore
     successQueue = Queue()
     numWorkers = cfg.dataset.numWorkers
 
     workers = [
-        successOnlyPreprocess.remote(successQueue, i, cfg) for i in range(numWorkers) #pyrefly:ignore
+        successOnlyPreprocess.remote(successQueue, i, cfg)
+        for i in range(numWorkers)  # pyrefly:ignore
     ]
 
     producerOne = fileProducer.remote(allSuccesses, successQueue, numWorkers)
     ray.get([producerOne] + workers)
 
-    allEpisodes = fileNameExtractor(cfg, "all_episodes") #pyrefly:ignore
+    allEpisodes = fileNameExtractor(cfg, "all_episodes")  # pyrefly:ignore
     allQueue = Queue()
 
-    workers2 = [allScenesPreprocess.remote(allQueue, i, cfg) for i in range(numWorkers)] #pyrefly:ignore
+    workers2 = [
+        allScenesPreprocess.remote(allQueue, i, cfg) for i in range(numWorkers)
+    ]  # pyrefly:ignore
 
     producerTwo = fileProducer.remote(allEpisodes, allQueue, numWorkers)
     ray.get([producerTwo] + workers2)

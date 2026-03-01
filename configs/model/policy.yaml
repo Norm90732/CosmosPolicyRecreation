@@ -1,4 +1,16 @@
+name: policyModel
+datasetName: "success_only"
+
+
+
 baseModelWeightDownloadDir: "/home/normansmith/blue_storage/projects/CosmosPolicyRecreation/checkpoints/cosmos2.52B"
-
-
 ckptPath: "/blue/uf-dsi/normansmith/projects/CosmosPolicyRecreation/checkpoints/cosmos2.52B/base/pre-trained/d20b7120-df3e-4911-919d-db6e08bad31c_ema_bf16.pt"
+
+
+
+resources:
+  dataloader:
+    batchSize: 32
+    numWorkers: 5
+    prefetchFactor: 2
+    pinMemory: True 
