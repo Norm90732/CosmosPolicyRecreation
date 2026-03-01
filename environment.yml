@@ -15,5 +15,4 @@ dependencies:
   - scikit-image
   - pillow
   - ruff
-  - beartype
   - ffmpeg

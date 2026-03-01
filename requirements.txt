@@ -1,7 +1,7 @@
 --extra-index-url https://pypi.nvidia.com
 --extra-index-url https://download.pytorch.org/whl/cu128
-torch>=2.7.0
-torchvision
+torch==2.7.0
+torchvision==0.22.0
 torchaudio
 torchmetrics
 torchdiffeq
@@ -11,6 +11,7 @@ decord
 ray[air]
 wandb
 pyrefly
+beartype
 jaxtyping
 typeguard
 diffusers
@@ -22,8 +23,8 @@ tqdm
 torch-ema
 accelerate
 sentencepiece
-#robotic 
+#robotic
 mujoco
 robosuite
-# robocasa - install from source: git clone https://github.com/robocasa/robocasa.git && pip install -e . # do later for this for eval 
+# robocasa - install from source: git clone https://github.com/robocasa/robocasa.git && pip install -e . # do later for this for eval
 h5py

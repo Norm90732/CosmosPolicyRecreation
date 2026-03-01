@@ -4,3 +4,4 @@ defaults:
 #  - inference: 
   - _self_
 
+cosmosRepoDir: "/blue/uf-dsi/normansmith/projects/CosmosPolicyRecreation/cosmos-predict2.5"
