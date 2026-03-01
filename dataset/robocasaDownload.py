@@ -1,5 +1,5 @@
 from huggingface_hub import snapshot_download
-from omegaconf import DictConfig,OmegaConf
+from omegaconf import DictConfig, OmegaConf
 import hydra
 
 
@@ -18,10 +18,9 @@ def downloadRoboCasa(cfg: DictConfig) -> None:
     return None
 
 
-
 def main() -> None:
-    cfg = OmegaConf.load("configs/config.yaml") #pyrefly:ignore
-    downloadRoboCasa(cfg) #pyrefly:ignore 
+    cfg = OmegaConf.load("configs/config.yaml")  # pyrefly:ignore
+    downloadRoboCasa(cfg)  # pyrefly:ignore
 
     return None
 
