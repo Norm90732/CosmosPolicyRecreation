@@ -1,5 +1,6 @@
 defaults:
   - dataset: robocasa
+  - model: policy
 #  - inference: 
   - _self_
 
