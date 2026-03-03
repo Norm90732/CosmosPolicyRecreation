@@ -233,13 +233,3 @@ class LatentSequenceBuilder(torch.nn.Module):
 
         return vaeOutput
 
-
-"""
-# conditionVideoMask creation
-        B, _, T, H, W = vaeOutput.shape
-        conditionVideoMask = torch.zeros(
-    (B, 1, T, H, W), device=vaeOutput.device, dtype=torch.bfloat16
-)
-        conditionVideoMask[:, :, :5, :, :] = 1.0                        
-        
-"""

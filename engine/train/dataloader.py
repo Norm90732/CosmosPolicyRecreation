@@ -34,11 +34,7 @@ class RoboCasaWebDataset:
             self.textEmbeddingsDict = pickle.load(f)
 
         #Conditioning masks 
-        self.conditioningMasks = {
-            "policy":         [0,1, 2, 3, 4], # s
-            "worldModel":    [0,1, 2, 3, 4, 5], # s + a
-            "valueFunction": [0,1, 2, 3, 4, 5, 6, 7, 8, 9], # s + a + s'
-        }
+        
         
         self.stage = cfg.model.stage.stageNumber
         
