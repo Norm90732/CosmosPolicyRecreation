@@ -1,6 +1,20 @@
 name: policyModel
-datasetName: "success_only"
 
+stage: 
+  stageNumber: 1
+  onlySuccessSample: 0.5
+  allScenesSample: 0.5
+  
+noiseScheduler:
+  pMean: 1.3862943611198906
+  pSTD: 1.2
+  sigmaMax: 200
+  sigmaMin: 0.01
+  sigmaData: 0.5
+  uniformLower: 1.0
+  uniformUpper: 85
+  logNormalSampleProb: 0.7
+  uniformSampleProb: 0.3
 
 
 baseModelWeightDownloadDir: "/home/normansmith/blue_storage/projects/CosmosPolicyRecreation/checkpoints/cosmos2.52B"

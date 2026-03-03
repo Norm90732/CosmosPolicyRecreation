@@ -23,32 +23,30 @@ class RoboCasaWebDataset:
         self.pinMemory = cfgResourcesDataloader.pinMemory
 
         # Dataset loading
-        if self.datasetName == "success_only":
-            chosenDirectories = [cfg.dataset.allSuccessOutputDir]
-
-        elif self.datasetName == "all_scenes":
-            chosenDirectories = [cfg.dataset.allScenesOutputDir]
-
-        elif self.datasetName == "both":
-            chosenDirectories = [
-                cfg.dataset.allSuccessOutputDir,
-                cfg.dataset.allScenesOutputDir,
-            ]
-        else:
-            raise ValueError(f"Unknown datasetName: {self.datasetName}")
-        allTarFiles = []
-
-        for currentDir in chosenDirectories:
-            if not os.path.exists(currentDir):
-                continue
-            tars = sorted(glob.glob(os.path.join(currentDir, "*.tar")))
-            allTarFiles.extend(tars)
-
-        self.allTarFiles = allTarFiles
+        self.successTars = sorted(glob.glob(
+            os.path.join(cfg.dataset.allSuccessOutputDir, "*.tar")
+        ))
+        self.allScenesTars = sorted(glob.glob(
+            os.path.join(cfg.dataset.allScenesOutputDir, "*.tar")
+        ))
 
         with open(self.embeddingPath, "rb") as f:
             self.textEmbeddingsDict = pickle.load(f)
 
+        #Conditioning masks 
+        self.conditioningMasks = {
+            "policy":         [0,1, 2, 3, 4], # s
+            "worldModel":    [0,1, 2, 3, 4, 5], # s + a
+            "valueFunction": [0,1, 2, 3, 4, 5, 6, 7, 8, 9], # s + a + s'
+        }
+        
+        self.stage = cfg.model.stage.stageNumber
+        
+        
+        self.onlySuccessSample = cfg.model.stage.onlySuccessSample
+        self.allScenesSample = cfg.model.stage.allScenesSample
+                
+        
     def _preprocessSample(self, sample):
         # define new Dictionary to return
         processedSample = {}
@@ -73,7 +71,7 @@ class RoboCasaWebDataset:
         lookedUpEmbedding = self.textEmbeddingsDict[textString]
 
         processedSample["crossattentionembed"] = lookedUpEmbedding.squeeze(0)
-
+        processedSample["isdemo"] = torch.tensor(sample["isdemo"], dtype=torch.bool)
         # img processing
         imageKeys = [
             "currentwristimg.jpg",
@@ -90,28 +88,36 @@ class RoboCasaWebDataset:
             processedSample[key] = torchImage
 
         return processedSample
-
+    
+    
+    
     def getDataloader(self):
-        # .decode("rgb8")
-        pipeline = [
-            wds.ResampledShards(self.allTarFiles),
-            wds.shuffle(100),
+        def tagDemo(s): s['isdemo'] = True; return s
+        def tagrollout(s): s['isdemo'] = False; return s
+        
+        pipeDemo = wds.DataPipeline(
+             wds.ResampledShards(self.successTars),
             wds.tarfile_to_samples(),
-            wds.decode("rgb8"),
-            wds.map(self._preprocessSample),
-            wds.batched(self.batchSize, collation_fn=default_collate, partial=False),
-        ]
-
-        dataset = wds.DataPipeline(*pipeline)
-
-        dataloader = wds.WebLoader(
-            dataset,
-            batch_size=None,
-            num_workers=self.numWorkers,
-            pin_memory=self.pinMemory,
-            prefetch_factor=self.prefetchFactor,
+            wds.map(tagDemo)
         )
-
-        return dataloader
-
-
+        
+        pipeRollout = wds.DataPipeline(
+             wds.ResampledShards(self.allScenesTars),
+            wds.tarfile_to_samples(),
+            wds.map(tagrollout)
+        )
+        
+        mix = wds.RandomMix([
+            pipeDemo,pipeRollout],[self.onlySuccessSample,self.allScenesSample]
+        )
+        
+        pipeline = wds.DataPipeline(
+            mix,
+            wds.decode("rgb8"),
+            wds.map(self._preprocessSample), 
+            wds.batched(self.batchSize, collation_fn=default_collate, partial=False),
+        )
+        
+        return wds.WebLoader(pipeline, batch_size=None, num_workers=self.numWorkers, pin_memory=self.pinMemory)
+        
+        

@@ -1,7 +1,7 @@
 defaults:
   - dataset: robocasa
   - model: policy
-#  - inference: 
+  - inference: stage1
   - _self_
 
 cosmosRepoDir: "/blue/uf-dsi/normansmith/projects/CosmosPolicyRecreation/cosmos-predict2.5"

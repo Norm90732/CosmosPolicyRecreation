@@ -183,7 +183,7 @@ class LatentSequenceBuilder(torch.nn.Module):
         futureLeftImg,
         futureRightImg,
         futureValue,
-    ) -> tuple[Tensor, Tensor]:
+    ) ->  Tensor:
         # reshapeImages to -1 to 1 before VAE.
         futureValue = rearrange(futureValue, "b -> b 1")
         currentWristImg = self._rescaleImg(currentWristImg)
@@ -228,11 +228,18 @@ class LatentSequenceBuilder(torch.nn.Module):
         vaeOutput[:, :, 6, :, :] = reshapedFutureProp.to(vaeOutput.dtype)
         vaeOutput[:, :, 10, :, :] = reshapedValues.to(vaeOutput.dtype)
 
-        # conditionVideoMask creation
+        
+        
+
+        return vaeOutput
+
+
+"""
+# conditionVideoMask creation
         B, _, T, H, W = vaeOutput.shape
         conditionVideoMask = torch.zeros(
     (B, 1, T, H, W), device=vaeOutput.device, dtype=torch.bfloat16
 )
-        conditionVideoMask[:, :, :5, :, :] = 1.0
-
-        return vaeOutput, conditionVideoMask
+        conditionVideoMask[:, :, :5, :, :] = 1.0                        
+        
+"""
