@@ -2,6 +2,7 @@ name: policyModel
 
 
 training:
+  gradClip: 2.0
   optimizer:
     lr: 1e-4
     betas: [0.9, 0.999]
@@ -21,15 +22,13 @@ training:
     flatlineScheduler:
       factor: 0.06
 
-
-
-
-
+  globalBatch: 768 #make sure globalBatch / (worldSize * localBatch) is even divisibility. 
 
 stage: 
   stageNumber: 1
   onlySuccessSample: 0.5
   allScenesSample: 0.5
+  valueFunctionVariant: "base"
   
 noiseScheduler:
   pMean: 1.3862943611198906
@@ -46,11 +45,26 @@ noiseScheduler:
 baseModelWeightDownloadDir: "/home/normansmith/blue_storage/projects/CosmosPolicyRecreation/checkpoints/cosmos2.52B"
 ckptPath: "/blue/uf-dsi/normansmith/projects/CosmosPolicyRecreation/checkpoints/cosmos2.52B/base/pre-trained/d20b7120-df3e-4911-919d-db6e08bad31c_ema_bf16.pt"
 
+logging:
+  l1LogEvery: 100
+  wandb:
+    project: "CosmosPolicyRecreation"
+    name: "Stage1-Run-BaseValue"
+  checkpointing: 
+    resumeCheckpoint: null
+    checkpointEvery: 500
+    checkpointSaveDir: "/home/normansmith/blue_storage/projects/CosmosPolicyRecreation/checkpoints/cosmos2.52B/stage1Training"
+    numToKeep: 5
 
 
 resources:
+  scaling:
+    totalWorkers: 1
+    resourcesPerWorker:
+      CPU: 6
+      GPU: 1
   dataloader:
-    batchSize: 32
-    numWorkers: 5
+    batchSize: 64
+    numWorkers: 4
     prefetchFactor: 2
     pinMemory: True 

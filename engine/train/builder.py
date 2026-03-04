@@ -6,6 +6,7 @@ import json
 from einops import rearrange, repeat
 from torch import Tensor
 import math
+
 """
 Buiilder of Latent Sequence
 """
@@ -183,7 +184,7 @@ class LatentSequenceBuilder(torch.nn.Module):
         futureLeftImg,
         futureRightImg,
         futureValue,
-    ) ->  Tensor:
+    ) -> Tensor:
         # reshapeImages to -1 to 1 before VAE.
         futureValue = rearrange(futureValue, "b -> b 1")
         currentWristImg = self._rescaleImg(currentWristImg)
@@ -228,8 +229,4 @@ class LatentSequenceBuilder(torch.nn.Module):
         vaeOutput[:, :, 6, :, :] = reshapedFutureProp.to(vaeOutput.dtype)
         vaeOutput[:, :, 10, :, :] = reshapedValues.to(vaeOutput.dtype)
 
-        
-        
-
         return vaeOutput
-

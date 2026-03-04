@@ -85,7 +85,7 @@ Latent video tensor from VAE latent encoding and latent injection input.
 
 timesteps:
 
-Recflow time steps from sampling
+EDM sigma noise time steps from sampling
 
 crossAttentionEmbed:
 
@@ -107,7 +107,7 @@ Input is a scalar.
 
 paddingMask:
 Spatial padding mask at B, H, W 
-1 = valid region, 0 = padded region 
+0 = valid region, 1 = padded region 
 
 dataType:
 
@@ -138,6 +138,14 @@ class CosmosDiffusionNet(torch.nn.Module):
         imgContextEmbed: Optional[torch.Tensor] = None,
     ) -> Float[Tensor, "b c t h w"]:
 
+        latent = latent.to(torch.bfloat16)
+        timesteps = timesteps.to(torch.bfloat16)
+        crossAttentionEmbed = crossAttentionEmbed.to(torch.bfloat16)
+        conditionVideoMask = conditionVideoMask.to(torch.bfloat16)
+        if paddingMask is not None:
+            paddingMask = paddingMask.to(torch.bfloat16)
+        
+        
         return self.net(
             x_B_C_T_H_W=latent,
             timesteps_B_T=timesteps,

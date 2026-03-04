@@ -12,7 +12,6 @@ from torch.utils.data import default_collate
 class RoboCasaWebDataset:
     def __init__(self, cfg: DictConfig):
         self.embeddingPath = cfg.dataset.reasonEmbeddings
-        self.datasetName = cfg.model.datasetName
 
         # batchSize, numworkers, prefetchFactor, pinmemory from config
         cfgResourcesDataloader = cfg.model.resources.dataloader
@@ -23,26 +22,23 @@ class RoboCasaWebDataset:
         self.pinMemory = cfgResourcesDataloader.pinMemory
 
         # Dataset loading
-        self.successTars = sorted(glob.glob(
-            os.path.join(cfg.dataset.allSuccessOutputDir, "*.tar")
-        ))
-        self.allScenesTars = sorted(glob.glob(
-            os.path.join(cfg.dataset.allScenesOutputDir, "*.tar")
-        ))
+        self.successTars = sorted(
+            glob.glob(os.path.join(cfg.dataset.allSuccessOutputDir, "*.tar"))
+        )
+        self.allScenesTars = sorted(
+            glob.glob(os.path.join(cfg.dataset.allScenesOutputDir, "*.tar"))
+        )
 
         with open(self.embeddingPath, "rb") as f:
             self.textEmbeddingsDict = pickle.load(f)
 
-        #Conditioning masks 
-        
-        
+        # Conditioning masks
+
         self.stage = cfg.model.stage.stageNumber
-        
-        
+
         self.onlySuccessSample = cfg.model.stage.onlySuccessSample
         self.allScenesSample = cfg.model.stage.allScenesSample
-                
-        
+
     def _preprocessSample(self, sample):
         # define new Dictionary to return
         processedSample = {}
@@ -50,7 +46,9 @@ class RoboCasaWebDataset:
         processedSample["__key__"] = sample["__key__"]
 
         # process actions and proprio
-        processedSample["futurevalue"] = torch.from_numpy(sample["futurevalue.npy"]).float()
+        processedSample["futurevalue"] = torch.from_numpy(
+            sample["futurevalue.npy"]
+        ).float()
         processedSample["collectedactions"] = torch.from_numpy(
             sample["collectedactions.npy"]
         )
@@ -67,7 +65,8 @@ class RoboCasaWebDataset:
         lookedUpEmbedding = self.textEmbeddingsDict[textString]
 
         processedSample["crossattentionembed"] = lookedUpEmbedding.squeeze(0)
-        processedSample["isdemo"] = torch.tensor(sample["isdemo"], dtype=torch.bool)
+        isDemoBool = sample["isdemo"] == b"1"
+        processedSample["isdemo"] = torch.tensor(isDemoBool, dtype=torch.bool)
         # img processing
         imageKeys = [
             "currentwristimg.jpg",
@@ -84,36 +83,43 @@ class RoboCasaWebDataset:
             processedSample[key] = torchImage
 
         return processedSample
-    
-    
-    
+
     def getDataloader(self):
-        def tagDemo(s): s['isdemo'] = True; return s
-        def tagrollout(s): s['isdemo'] = False; return s
-        
+        def tagDemo(s):
+            s["isdemo"] = b"1"
+            return s
+
+        def tagrollout(s):
+            s["isdemo"] = b"0"
+            return s
+
         pipeDemo = wds.DataPipeline(
-             wds.ResampledShards(self.successTars),
+            wds.ResampledShards(self.successTars),
             wds.tarfile_to_samples(),
-            wds.map(tagDemo)
+            wds.map(tagDemo),
         )
-        
+
         pipeRollout = wds.DataPipeline(
-             wds.ResampledShards(self.allScenesTars),
+            wds.ResampledShards(self.allScenesTars),
             wds.tarfile_to_samples(),
-            wds.map(tagrollout)
+            wds.map(tagrollout),
         )
-        
-        mix = wds.RandomMix([
-            pipeDemo,pipeRollout],[self.onlySuccessSample,self.allScenesSample]
+
+        mix = wds.RandomMix(
+            [pipeDemo, pipeRollout], [self.onlySuccessSample, self.allScenesSample]
         )
-        
+
         pipeline = wds.DataPipeline(
             mix,
             wds.decode("rgb8"),
-            wds.map(self._preprocessSample), 
+            wds.map(self._preprocessSample),
             wds.batched(self.batchSize, collation_fn=default_collate, partial=False),
         )
-        
-        return wds.WebLoader(pipeline, batch_size=None, num_workers=self.numWorkers, pin_memory=self.pinMemory)
-        
-        
+
+        return wds.WebLoader(
+            pipeline,
+            batch_size=None,
+            num_workers=self.numWorkers,
+            pin_memory=self.pinMemory,
+            prefetch_factor=self.prefetchFactor
+        )
