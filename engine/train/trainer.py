@@ -1,6 +1,7 @@
 import os
-
 os.environ["JAXTYPING_DISABLE"] = "1"
+os.environ["RAY_TRAIN_WORKER_HEALTH_CHECK_TIMEOUT_S"] = "3600" 
+os.environ["RAY_TRAIN_WORKER_GROUP_START_TIMEOUT_S"] = "3600"
 import torch
 from omegaconf import DictConfig, OmegaConf
 import hydra
@@ -48,6 +49,7 @@ def trainingFunction(config: dict):
             project=cfg.model.logging.wandb.project,
             config=OmegaConf.to_container(cfg, resolve=True),  # pyrefly:ignore
             name=cfg.model.logging.wandb.name,
+            resume="allow"
         )
 
     print("starting model load on rank", rank)

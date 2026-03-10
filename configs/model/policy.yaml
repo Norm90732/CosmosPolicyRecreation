@@ -4,7 +4,7 @@ name: policyModel
 training:
   gradClip: 2.0
   optimizer:
-    lr: 1e-4
+    lr: 1e-4 #sqrt scale for new batch 
     betas: [0.9, 0.999]
     eps: 1e-8
     weight_decay: 0.0
@@ -49,22 +49,22 @@ logging:
   l1LogEvery: 100
   wandb:
     project: "CosmosPolicyRecreation"
-    name: "Stage1-Run-BaseValue"
+    name: "Stage1-Run-40k-Base"
   checkpointing: 
     resumeCheckpoint: null
     checkpointEvery: 500
     checkpointSaveDir: "/home/normansmith/blue_storage/projects/CosmosPolicyRecreation/checkpoints/cosmos2.52B/stage1Training"
-    numToKeep: 5
+    numToKeep: 3
 
 
 resources:
   scaling:
-    totalWorkers: 1
+    totalWorkers: 8
     resourcesPerWorker:
-      CPU: 6
+      CPU: 4
       GPU: 1
   dataloader:
-    batchSize: 64
-    numWorkers: 4
+    batchSize: 32
+    numWorkers: 2
     prefetchFactor: 2
-    pinMemory: True 
+    pinMemory: True

@@ -102,7 +102,7 @@ def optimizerAndSchedulerCreator(model, cfg: DictConfig) -> tuple[Adam, Sequenti
     cosineScheduler = CosineAnnealingLR(
         optimizer,
         T_max=cfgScheduler.cosine.TMax,
-        eta_min=cfgScheduler.cosine.etaMin,
+        eta_min=cfgScheduler.cosine.etaMin * cfgOptimizer.lr,
     )
 
     flatlineScheduler = ConstantLR(

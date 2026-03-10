@@ -12,4 +12,6 @@ normalizationFile: "/blue/weishao/normansmith/data/success_only/dataset_statisti
 
 reasonEmbeddings:  "/blue/weishao/normansmith/data/success_only/reason1_embeddings.pkl"
 
+reasonMMAP: "/blue/weishao/normansmith/data/success_only/"
+
 imageSize: 224 

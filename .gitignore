@@ -45,3 +45,5 @@ wandb/
 *.swp
 *.swo
 *~
+scratch_tmp/
+

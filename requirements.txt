@@ -26,5 +26,4 @@ sentencepiece
 #robotic
 mujoco
 robosuite
-# robocasa - install from source: git clone https://github.com/robocasa/robocasa.git && pip install -e . # do later for this for eval
 h5py
