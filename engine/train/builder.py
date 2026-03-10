@@ -1,7 +1,7 @@
 import torch
 from omegaconf import DictConfig
 import hydra
-from models.cosmosLoader import EncoderVAE
+from models.cosmosLoaderBase import EncoderVAE
 import json
 from einops import rearrange, repeat
 from torch import Tensor

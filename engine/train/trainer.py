@@ -32,7 +32,7 @@ from engine.train.trainerUtils import (
     l1LossGeneration,
     lossFunctionWeighting
 )
-from models.cosmosLoader import EncoderVAE, CosmosDiffusionNet, loadCosmosModules
+from models.cosmosLoaderBase import EncoderVAE, CosmosDiffusionNet, loadCosmosModules
 
 
 
@@ -266,9 +266,7 @@ if __name__ == "__main__":
     cfg = OmegaConf.load("configs/config.yaml")
     cfg.dataset = OmegaConf.load("configs/dataset/robocasa.yaml")
     cfg.model = OmegaConf.load("configs/model/policy.yaml")
-    cfg.inference = OmegaConf.load("configs/inference/stage1.yaml")
-    
-    
+    cfg.inference = OmegaConf.load("configs/inference/rollout.yaml")
     #ray 
     os.environ["RAY_TRAIN_WORKER_GROUP_START_TIMEOUT_S"] = "300"
     

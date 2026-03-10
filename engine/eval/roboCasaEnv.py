@@ -2,7 +2,6 @@ import numpy as np
 import robosuite
 import robocasa  #pyrefly:ignore 
 
-
 class RoboCasaEnvironmentWorker():
     def __init__(self,taskName:str,numActionsLength:int,seed:int,episodeIDX:int,numScenes:int=5) -> None:
         import os
