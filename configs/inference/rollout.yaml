@@ -1,0 +1,36 @@
+noiseScheduler:
+  pMean: 1.3862943611198906
+  pSTD: 1.2
+  sigmaMax: 80
+  sigmaMin: 4
+  sigmaData: 0.5
+  uniformLower: 1
+  uniformUpper: 85
+  logNormalSampleProb: 0.7
+  uniformSampleProb: 0.3
+
+solver:
+  cfg: 1.5
+  actionSteps: 5
+
+
+numTrialsPerTask: 50 
+numScenes: 5 
+
+
+robocasaEnv: [
+    "PickPlaceCounterToCabinet", "PickPlaceCabinetToCounter", 
+    "PickPlaceCounterToSink", "PickPlaceSinkToCounter",
+    "PickPlaceCounterToMicrowave", "PickPlaceMicrowaveToCounter", 
+    "PickPlaceCounterToStove", "PickPlaceStoveToCounter",
+    "OpenSingleDoor", "CloseSingleDoor", "OpenDoubleDoor", "CloseDoubleDoor",
+    "OpenDrawer", "CloseDrawer",
+    "TurnOnSinkFaucet", "TurnOffSinkFaucet", "TurnSinkSpout", 
+    "TurnOnStove", "TurnOffStove",
+    "CoffeeSetupMug", "CoffeeServeMug", "CoffeePressButton", 
+    "TurnOnMicrowave", "TurnOffMicrowave"
+]
+
+
+
+  

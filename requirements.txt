@@ -24,6 +24,7 @@ torch-ema
 accelerate
 sentencepiece
 #robotic
-mujoco
+mujoco==3.2.6
+lxml
 robosuite
 h5py

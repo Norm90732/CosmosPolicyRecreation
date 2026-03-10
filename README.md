@@ -58,5 +58,12 @@ cd ..
 cd cosmos-predict2.5
 pip install -e . --no-deps
 
-### 4. Install RoboCasa
-#add installation here when its time for verification 
+### 4. Install RoboCasa (use authors fork)
+git clone https://github.com/moojink/robocasa-cosmos-policy.git
+cd robocasa-cosmos-policy
+
+uv pip install -e . --no-deps --python ../cosmos-predict2.5/.venv/bin/python
+
+../cosmos-predict2.5/.venv/bin/python robocasa/scripts/download_kitchen_assets.py
+../cosmos-predict2.5/.venv/bin/python robocasa/scripts/setup_macros.py
+cd ..
