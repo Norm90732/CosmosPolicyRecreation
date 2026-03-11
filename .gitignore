@@ -46,4 +46,6 @@ wandb/
 *.swo
 *~
 scratch_tmp/
+cosmos-predict2.5/
+robocasa-cosmos-policy/
 
