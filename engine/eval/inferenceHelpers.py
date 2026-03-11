@@ -139,126 +139,22 @@ class InferenceActionBuilder(LatentSequenceBuilder):
         vaeOutput[:, :, 1, :, :] = reshapedCurrentProp.to(vaeOutput.dtype)
         
         return vaeOutput
-        
-#Future State Builder
-class InferenceWMBuilder(LatentSequenceBuilder):
-    
-    def __init__(self, cfg, vaeModel, device):
-        super().__init__(cfg, vaeModel, device)
-        
-    def _normalizeProprioAction(self,currentProprio,collectedActions):
-        eps = 1e-8
-        currentPropScaled = (currentProprio - self.propMin) / (
-            (self.propMax - self.propMin) + eps  # pyrefly:ignore
-        )
-        currentPropNorm = (2.0 * currentPropScaled) - 1.0
-        currentPropNorm = torch.clamp(currentPropNorm, min=-1.0, max=1.0)
-        actionsScaled = (collectedActions - self.actMin) / (
-            (self.actMax - self.actMin) + eps  # pyrefly:ignore
-        )
-        actionsNorm = (2.0 * actionsScaled) - 1.0
-        actionsNorm = torch.clamp(actionsNorm, min=-1.0, max=1.0)
-        return currentPropNorm,actionsNorm
-    
-    @torch.no_grad()
-    def forward( #pyrefly:ignore 
-        self,
-        currentProprio,
-        currentWristImg,
-        currentLeftImg,
-        currentRightImg,
-        collectedActions,     
-        futureProprio=None,        
-        futureWristImg=None,        
-        futureLeftImg=None,         
-        futureRightImg=None,        
-        futureValue=None,           
-    ):
-        currentWristImg = self._rescaleImg(currentWristImg)
-        currentLeftImg = self._rescaleImg(currentLeftImg)
-        currentRightImg = self._rescaleImg(currentRightImg)
-        
-        #rescale proprio 
-        rescaledCurrentProprio,actionsNorm = self._normalizeProprioAction(currentProprio,collectedActions)
-        
-        blankPlaceHolder = torch.zeros_like(currentWristImg) 
-        
-        inputToVAE = self._buildVAEInput(
-            currentWristImg=currentWristImg,
-            currentLeftImg=currentLeftImg,
-            currentRightImg=currentRightImg,
-            futureWristImg=blankPlaceHolder,
-            futureLeftImg=blankPlaceHolder,
-            futureRightImg=blankPlaceHolder,
-        ).to(torch.bfloat16)
-        
-        vaeOutput = self._VAEForward(inputToVAE)
 
-        reshapedCurrentProp = self._latentBlockMaker(rescaledCurrentProprio)
+def worldModelInjector(originalVAELatent:torch.Tensor,predictedActionChunk:torch.Tensor):
+    originalVAELatent = originalVAELatent.clone()
+    originalVAELatent[:, :, 5, :, :] = predictedActionChunk.to(originalVAELatent.dtype)
+    return originalVAELatent
 
-        reshapedActions = self._latentBlockMaker(actionsNorm)
-        vaeOutput = vaeOutput.clone()
-        vaeOutput[:, :, 1, :, :] = reshapedCurrentProp.to(vaeOutput.dtype)
-        vaeOutput[:, :, 5, :, :] = reshapedActions.to(vaeOutput.dtype)
-
-        return vaeOutput
-        
-#Value Function Builder
-class InferenceValueBuilder(LatentSequenceBuilder):
-    def __init__(self, cfg, vaeModel, device):
-        super().__init__(cfg, vaeModel, device)
-    
-    @torch.no_grad()
-    def forward( #pyrefly:ignore 
-        self,
-        currentProprio,
-        currentWristImg,
-        currentLeftImg,
-        currentRightImg,
-        collectedActions,     
-        futureProprio,        
-        futureWristImg,        
-        futureLeftImg,         
-        futureRightImg,        
-        futureValue=None,           
-    ):
-        currentWristImg = self._rescaleImg(currentWristImg)
-        currentLeftImg = self._rescaleImg(currentLeftImg)
-        currentRightImg = self._rescaleImg(currentRightImg)
-        futureWristImg = self._rescaleImg(futureWristImg)
-        futureLeftImg = self._rescaleImg(futureLeftImg)
-        futureRightImg = self._rescaleImg(futureRightImg)
-        
-        currentPropNorm, actionsNorm, futurePropNorm = self._normalizePhysical(
-            currentProprio,
-            collectedActions,
-            futureProprio,
-        )
-        
-        inputToVAE = self._buildVAEInput(
-            currentWristImg=currentWristImg,
-            currentLeftImg=currentLeftImg,
-            currentRightImg=currentRightImg,
-            futureWristImg=futureWristImg,
-            futureLeftImg=futureLeftImg,
-            futureRightImg=futureRightImg,
-        ).to(torch.bfloat16)
-
-        vaeOutput = self._VAEForward(inputToVAE)
-
-        reshapedCurrentProp = self._latentBlockMaker(currentPropNorm)
-
-        reshapedActions = self._latentBlockMaker(actionsNorm)
-
-        reshapedFutureProp = self._latentBlockMaker(futurePropNorm)
-        vaeOutput = vaeOutput.clone()
-        vaeOutput[:, :, 1, :, :] = reshapedCurrentProp.to(vaeOutput.dtype)
-        vaeOutput[:, :, 5, :, :] = reshapedActions.to(vaeOutput.dtype)
-        vaeOutput[:, :, 6, :, :] = reshapedFutureProp.to(vaeOutput.dtype)
-        
-        return vaeOutput
-    
-    
+def valueModelInjector(originalVAELatent:torch.Tensor,predictedActionChunk:torch.Tensor,
+                       predictedFutureWristImg:torch.Tensor,predictedFutureLeftImg:torch.Tensor,
+                       predictedFutureRightImg:torch.Tensor,predictedFutureProprio):
+    originalVAELatent = originalVAELatent.clone()
+    originalVAELatent[:, :, 5, :, :] = predictedActionChunk.to(originalVAELatent.dtype)
+    originalVAELatent[:, :, 6, :, :] = predictedFutureProprio.to(originalVAELatent.dtype)
+    originalVAELatent[:, :, 7, :, :] = predictedFutureWristImg.to(originalVAELatent.dtype)
+    originalVAELatent[:, :, 8, :, :] = predictedFutureLeftImg.to(originalVAELatent.dtype)
+    originalVAELatent[:, :, 9, :, :] = predictedFutureRightImg.to(originalVAELatent.dtype)
+    return originalVAELatent
     
 
 class unNormalizeLatents(torch.nn.Module):
@@ -266,6 +162,7 @@ class unNormalizeLatents(torch.nn.Module):
     Averages Latent -> Un Normalizes -> Returns Proper Shape for Robot 
     """
     def __init__(self,cfg:DictConfig,actionHorizon:int=32,actionDim:int=7,propDim:int=9):
+        super().__init__()
         import json 
         self.imageSize = cfg.dataset.imageSize
         self.latentSize = self.imageSize // 8
@@ -295,7 +192,7 @@ class unNormalizeLatents(torch.nn.Module):
         
         flattened = torch.flatten(latent,1)
         
-        fullCopies = desiredSize//flattened
+        fullCopies = desiredSize // flattenedLength
         
         recovered = flattened[:, : fullCopies * flattenedLength]
         recovered = rearrange(recovered, "b (n r) -> b n r", n=fullCopies, r=flattenedLength)
@@ -309,7 +206,7 @@ class unNormalizeLatents(torch.nn.Module):
         flat = self._inverseLatentBlock(actionChunk, flattenedLength)
         actNorm = (flat + 1.0) / 2.0                         
         actions = actNorm * (self.actMax - self.actMin) + self.actMin #pyrefly:ignore 
-        
+        actions = rearrange(actions,"b (t d) -> b t d", t = self.actionHorizon,d = self.actionDim)
         return actions 
     def unnormProp(self,propChunk):
         flat = self._inverseLatentBlock(propChunk,self.propDim)
@@ -338,12 +235,3 @@ class unNormalizeLatents(torch.nn.Module):
             "value": value,             
         }
        
-
-
-    
-
-
-
-
-        
-        
