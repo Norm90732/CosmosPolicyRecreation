@@ -14,6 +14,7 @@ noiseScheduler:
   uniformUpper: 85
   logNormalSampleProb: 0.7
   uniformSampleProb: 0.3
+  rho: 7
 
 solver:
   actionSteps: 5
