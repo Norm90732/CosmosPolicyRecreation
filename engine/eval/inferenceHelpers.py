@@ -3,7 +3,7 @@ from engine.train.diffusion import EDMNoiseScheduler
 from engine.train.builder import LatentSequenceBuilder
 from cosmos_predict2._src.predict2.cosmos_policy.modules.cosmos_sampler import CosmosPolicySampler
 from omegaconf import DictConfig, OmegaConf
-
+from einops import rearrange
 """
 Inference Solver Class 
 """
@@ -64,15 +64,16 @@ class CosmosInferenceSolver:
         
         return denoisedPrediction
         
-
     def runSolver(self,builtVAEInput,crossAttentionEmbed,conditioningMasks,numSteps):
         pureNoise = torch.randn_like(builtVAEInput)
         noisyInput = conditioningMasks * builtVAEInput + (1-conditioningMasks) * pureNoise
         
         def _denoiser(x,sigma):
-            return self.denoiser(
-                x,sigma,crossAttentionEmbed,conditioningMasks
-            )
+            predictedX0 =  self.denoiser(x,sigma,crossAttentionEmbed,conditioningMasks)
+            
+            lockedCondition = conditioningMasks * builtVAEInput + (1-conditioningMasks) * predictedX0
+            
+            return lockedCondition
         
         return self.scheduler(
             x0_fn=_denoiser,
@@ -202,8 +203,6 @@ class InferenceWMBuilder(LatentSequenceBuilder):
 
         return vaeOutput
         
-        
-
 #Value Function Builder
 class InferenceValueBuilder(LatentSequenceBuilder):
     def __init__(self, cfg, vaeModel, device):
@@ -258,5 +257,93 @@ class InferenceValueBuilder(LatentSequenceBuilder):
         vaeOutput[:, :, 6, :, :] = reshapedFutureProp.to(vaeOutput.dtype)
         
         return vaeOutput
+    
+    
+    
+
+class unNormalizeLatents(torch.nn.Module):
+    """
+    Averages Latent -> Un Normalizes -> Returns Proper Shape for Robot 
+    """
+    def __init__(self,cfg:DictConfig,actionHorizon:int=32,actionDim:int=7,propDim:int=9):
+        import json 
+        self.imageSize = cfg.dataset.imageSize
+        self.latentSize = self.imageSize // 8
+        self.actionDim = actionDim
+        self.actionHorizon= actionHorizon
+        self.propDim = propDim
+        statisticsPath = cfg.dataset.normalizationFile
+        with open(statisticsPath, "r") as f:
+            stats = json.load(f)
+        
+        self.register_buffer(
+            "actMin", torch.tensor(stats["actions_min"], dtype=torch.float32)
+        )
+        self.register_buffer(
+            "actMax", torch.tensor(stats["actions_max"], dtype=torch.float32)
+        )
+
+        self.register_buffer(
+            "propMin", torch.tensor(stats["proprio_min"], dtype=torch.float32)
+        )
+        self.register_buffer(
+            "propMax", torch.tensor(stats["proprio_max"], dtype=torch.float32)
+        )
+    
+    def _inverseLatentBlock(self,latent,flattenedLength):
+        desiredSize = 16 * self.latentSize * self.latentSize
+        
+        flattened = torch.flatten(latent,1)
+        
+        fullCopies = desiredSize//flattened
+        
+        recovered = flattened[:, : fullCopies * flattenedLength]
+        recovered = rearrange(recovered, "b (n r) -> b n r", n=fullCopies, r=flattenedLength)
+        recovered = recovered.mean(dim=1)
+        
+        return recovered
+    def unnormAction(self,actionChunk):
+        actionDim = self.actionDim
+        flattenedLength = self.actionHorizon * actionDim
+        
+        flat = self._inverseLatentBlock(actionChunk, flattenedLength)
+        actNorm = (flat + 1.0) / 2.0                         
+        actions = actNorm * (self.actMax - self.actMin) + self.actMin #pyrefly:ignore 
+        
+        return actions 
+    def unnormProp(self,propChunk):
+        flat = self._inverseLatentBlock(propChunk,self.propDim)
+        propNorm = (flat + 1.0) / 2.0
+        proprio = propNorm * (self.propMax - self.propMin) + self.propMin #pyrefly:ignore 
+
+        return proprio 
+    
+    def unnormValue(self,valueLatent):
+        flat = self._inverseLatentBlock(valueLatent, flattenedLength=1)
+        value = (flat + 1.0) / 2.0
+
+        return value
+    
+    @torch.no_grad()
+    def forward(self,vaeOutput):
+        actions  = self.unnormAction(vaeOutput[:, :, 5, :, :])
+        currProp = self.unnormProp(vaeOutput[:, :, 1, :, :])
+        futureProp = self.unnormProp(vaeOutput[:, :, 6, :, :])
+        value    = self.unnormValue(vaeOutput[:, :, 10, :, :])
+        
+        return {
+            "actions": actions,          
+            "currentProprio": currProp,  
+            "futureProprio": futureProp, 
+            "value": value,             
+        }
+       
+
+
+    
+
+
+
+
         
         
