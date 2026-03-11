@@ -21,6 +21,7 @@ solver:
   worldSteps: 1 
   valueSteps: 1
 
+actionHorizon: 16
 
 numTrialsPerTask: 50 
 numScenes: 5 

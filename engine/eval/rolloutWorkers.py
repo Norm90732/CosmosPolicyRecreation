@@ -5,14 +5,83 @@ import numpy as np
 from PIL import Image
 from pathlib import Path 
 import io 
+import torch 
+import gc 
+import pickle 
 from engine.eval.inferenceHelpers import (
     CosmosInferenceSolver,
     InferenceActionBuilder,
     unNormalizeLatents
 )
+from models.cosmosLoaderBase import loadCosmosModules, EncoderVAE,CosmosDiffusionNet
+from models.cosmosLoaderTrained import loadTrainedPolicyModel
 
-@ray.remote(num_cpus=1,num_gpus=0.1)
+@ray.remote(num_cpus=1,num_gpus=1)
+class CosmosInferencePolicyServer:
+    def __init__(self,cfg:DictConfig):
+        self.device = torch.device("cuda")
+        self.cfg = cfg 
+        self.actionHorizon = cfg.inference.actionHorizon
+        print("Loading Cosmos Model")
+        vae, textEncoder, net, config = loadCosmosModules(cfg)
+        
+        policyNet = loadTrainedPolicyModel(cfg,net)
+        print("Loaded policyNet weights")
+        
+        modelVAE = EncoderVAE(vae)
+        policyNetModel = CosmosDiffusionNet(policyNet)
+        
+        del textEncoder
+        torch.cuda.empty_cache()
+        gc.collect()
+        print("All models loaded")
+        #load text embeddings onto gpu 
+        embKeys = np.load(Path(cfg.dataset.reasonMMAP, "embeddingkeys.npy"), allow_pickle=True)
+        embValues = np.load(Path(cfg.dataset.reasonMMAP, "embeddingvalues.npy"))  
 
+        self.embIndex = {k: i for i, k in enumerate(embKeys)}
+        self.embValues = torch.from_numpy(embValues).float().to(self.device)
+        
+        #define solver, action builder, unnormalize latents
+        
+        self.inferenceSolver = CosmosInferenceSolver(
+            cfg=cfg,diffusionModel=policyNetModel,device=self.device
+        )
+        
+        self.infereceActionBuilder = InferenceActionBuilder(
+            cfg=cfg,vaeModel=modelVAE,device=self.device
+        )
+        
+        self.unNormalizeLatents = unNormalizeLatents(cfg)
+        
+        
+        
+        
+    def _getEmbedding(self, textString: str) -> torch.Tensor:
+        idx = self.embIndex[textString]
+        return self.embValues[idx]  
+        
+    def _buildActionMask(self,vaeInput:torch.Tensor,T:int=11,H:int=28,W:int=28):
+        
+        B = vaeInput.shape[0]
+
+        conditionVideoMask = torch.zeros(
+            (B, 1, T, H, W), device=self.device, dtype=torch.bfloat16
+        )
+        
+        conditionVideoMask[:, :, :5, :, :] = (1.0)
+        
+        
+        return conditionVideoMask
+    
+    
+    def predictionActions(self,)
+        
+        
+        
+        
+        
+        
 
 
 

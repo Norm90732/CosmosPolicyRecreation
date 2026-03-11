@@ -70,7 +70,7 @@ class RoboCasaEnvironmentWorker():
             "proprio": [],
             "actions":[]
         }
-        
+        self.taskSentence = self.env.get_ep_meta()["lang"]
         return self._extractAndFormat(rawObservation)
     
     
