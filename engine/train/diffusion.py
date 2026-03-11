@@ -1,6 +1,3 @@
-from cosmos_predict2._src.predict2.models.fm_solvers_unipc import (
-    FlowUniPCMultistepScheduler,
-)
 import torch
 from omegaconf import DictConfig
 from torch import Tensor
@@ -70,25 +67,3 @@ class EDMNoiseScheduler:
         return skipSigma, outputSigma, cinSigma, noiseSigma, lossWeighting
 
 
-def buildInferenceScheduler(
-    device: torch.device, numSteps: int
-) -> FlowUniPCMultistepScheduler:
-    scheduler = FlowUniPCMultistepScheduler(
-        num_train_timesteps=1000,
-        solver_order=2,
-        prediction_type="flow_prediction",
-        solver_type="bh2",
-        shift=1,
-        use_dynamic_shifting=False,
-        lower_order_final=True,
-        final_sigmas_type="zero",
-        predict_x0=True,
-    )
-
-    scheduler.set_timesteps(
-        num_inference_steps=numSteps,
-        device=device,
-        shift=5,  # RoboCasa shift
-    )
-
-    return scheduler

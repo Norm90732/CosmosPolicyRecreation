@@ -16,8 +16,9 @@ noiseScheduler:
   uniformSampleProb: 0.3
 
 solver:
-  cfg: 1.5
   actionSteps: 5
+  worldSteps: 1 
+  valueSteps: 1
 
 
 numTrialsPerTask: 50 
