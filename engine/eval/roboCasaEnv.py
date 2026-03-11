@@ -7,7 +7,7 @@ import robocasa  #pyrefly:ignore
 class RoboCasaEnvironmentWorker():
     def __init__(self,taskName:str,numActionsLength:int,seed:int,episodeIDX:int,numScenes:int=5) -> None:
         sceneIndex = (episodeIDX //10) % numScenes
-
+        self.taskName = taskName
         layoutStyleIds = [(1,1), (2,2), (4,4), (6,9), (7,10)]
         
         layoutStyle = layoutStyleIds[sceneIndex]
@@ -32,6 +32,10 @@ class RoboCasaEnvironmentWorker():
         self.env = robosuite.make(**env_kwargs)
         
         self.numActions = numActionsLength #number of steps to execute 
+        
+        self.currentRawObservation = None
+        self.simHistory = {}
+        
         
     def _extractAndFormat(self,observationDictionary:dict):
         leftImg = observationDictionary["robot0_agentview_left_image"][::-1]
@@ -58,7 +62,15 @@ class RoboCasaEnvironmentWorker():
         #policy code uses stabilizes the env 
         for _ in range(10):
             rawObservation, _, _, _ = self.env.step(np.zeros(self.env.action_dim))
-            
+        
+        self.simHistory = {
+            "wrist_images_jpeg": [],
+            "primary_images_jpeg": [],
+            "secondary_images_jpeg": [],
+            "proprio": [],
+            "actions":[]
+        }
+        
         return self._extractAndFormat(rawObservation)
     
     
@@ -68,28 +80,56 @@ class RoboCasaEnvironmentWorker():
             seqLen = actionSequence.shape[0]
             mobileBase = np.zeros((seqLen, 5))
             mobileBase[:, -1] = -1.0 
-            actionSequence = np.concatenate([actionSequence, mobileBase], axis=1)
+            actionSequence = np.concatenate([actionSequence, mobileBase], axis=1) #size 12 
             
         numSteps = min(self.numActions,actionSequence.shape[0])
-        
+            
         for i in range(0,numSteps):
             predictedAction = actionSequence[i]
-            nextObservation, reward, done, info = self.env.step(predictedAction)
+            
+            formattedObs = self._extractAndFormat(self.currentRawObservation) # pyrefly:ignore
+            self.simHistory["wrist_images_jpeg"].append(formattedObs["currentWristImg"])
+            self.simHistory["primary_images_jpeg"].append(formattedObs["currentLeftImg"])
+            self.simHistory["secondary_images_jpeg"].append(formattedObs["currentRightImg"])
+            self.simHistory["proprio"].append(formattedObs["currentProprio"])
+            self.simHistory["actions"].append(predictedAction)
+            self.currentRawObservation, reward, done, info = self.env.step(predictedAction)
             
             success = self.env._check_success()
             if success == True:
                 break 
         
         return {
-            "success": bool(success),
+            "success": bool(self.env._check_success()),
             "timestep": i + 1,
-            "observation": self._extractAndFormat(nextObservation),
+            "observation": self._extractAndFormat(self.currentRawObservation), #pyrefly:ignore 
             "reward": reward,
             "info": info,
             "done": done or success
         }
 
-            
+    
+    def prepareHistoryExport(self):
+        
+        formattedObservation = self._extractAndFormat(self.currentRawObservation) #pyrefly:ignore 
+        self.simHistory["primary_images_jpeg"].append(formattedObservation["currentLeftImg"])
+        self.simHistory["secondary_images_jpeg"].append(formattedObservation["currentRightImg"])
+        self.simHistory["wrist_images_jpeg"].append(formattedObservation["currentWristImg"])
+        self.simHistory["proprio"].append(formattedObservation["currentProprio"])
+        self.simHistory["actions"].append(np.zeros(12, dtype=np.float32))
+        
+        return {
+            "task_description": self.taskName,
+            "success": bool(self.env._check_success()),
+            "primary_images": np.stack(self.simHistory["primary_images_jpeg"], axis=0).astype(np.uint8),
+            "secondary_images": np.stack(self.simHistory["secondary_images_jpeg"], axis=0).astype(np.uint8),
+            "wrist_images": np.stack(self.simHistory["wrist_images_jpeg"], axis=0).astype(np.uint8),
+            "proprio": np.stack(self.simHistory["proprio"], axis=0).astype(np.float32),
+            "actions": np.stack(self.simHistory["actions"], axis=0).astype(np.float32)
+        }
+        
+    
+    
     def close(self):
         self.env.close()    
         del self.env 

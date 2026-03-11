@@ -65,7 +65,7 @@ class CosmosInferenceSolver:
         return denoisedPrediction
         
     def runSolver(self,builtVAEInput,crossAttentionEmbed,conditioningMasks,numSteps):
-        pureNoise = torch.randn_like(builtVAEInput)
+        pureNoise = torch.randn_like(builtVAEInput) * self.sigmaMax #test tomorrow and see if it works or not. 
         noisyInput = conditioningMasks * builtVAEInput + (1-conditioningMasks) * pureNoise
         
         def _denoiser(x,sigma):
