@@ -1,65 +1,86 @@
 import ray 
-from omegaconf import DictConfig
+from ray import serve 
+from omegaconf import DictConfig, OmegaConf
 import h5py 
 import numpy as np 
 from PIL import Image
 from pathlib import Path 
 import io 
 import torch 
-import gc 
-import pickle 
+import gc  
 from engine.eval.inferenceHelpers import (
     CosmosInferenceSolver,
     InferenceActionBuilder,
     unNormalizeLatents
 )
-from models.cosmosLoaderBase import loadCosmosModules, EncoderVAE,CosmosDiffusionNet
+from engine.eval.roboCasaEnv import RoboCasaEnvironmentWorker
+from models.cosmosLoaderBase import loadCosmosModules, EncoderVAE,CosmosDiffusionNet, ReasonTextEncoder
 from models.cosmosLoaderTrained import loadTrainedPolicyModel
 
-@ray.remote(num_cpus=1,num_gpus=1)
+@serve.deployment(
+    ray_actor_options={"num_cpus": 1, "num_gpus": 1},
+    num_replicas=4,
+    max_ongoing_requests=64  
+)
 class CosmosInferencePolicyServer:
     def __init__(self,cfg:DictConfig):
+        if not isinstance(cfg, DictConfig):
+            cfg = OmegaConf.create(cfg) #pyrefly:ignore 
         self.device = torch.device("cuda")
         self.cfg = cfg 
         self.actionHorizon = cfg.inference.actionHorizon
+        
+        self.actionSolverSteps = cfg.inference.solver.actionSteps
+        
+        
         print("Loading Cosmos Model")
         vae, textEncoder, net, config = loadCosmosModules(cfg)
         
         policyNet = loadTrainedPolicyModel(cfg,net)
         print("Loaded policyNet weights")
         
-        modelVAE = EncoderVAE(vae)
-        policyNetModel = CosmosDiffusionNet(policyNet)
+        modelVAE = EncoderVAE(vae).to(self.device)
+        self.policyNetModel = CosmosDiffusionNet(policyNet).to(self.device)
         
-        del textEncoder
-        torch.cuda.empty_cache()
-        gc.collect()
+        self.textEncoder = ReasonTextEncoder(textEncoder)
+        self.dynamicTextEmbedCache = {}
+        
         print("All models loaded")
         #load text embeddings onto gpu 
         embKeys = np.load(Path(cfg.dataset.reasonMMAP, "embeddingkeys.npy"), allow_pickle=True)
         embValues = np.load(Path(cfg.dataset.reasonMMAP, "embeddingvalues.npy"))  
 
-        self.embIndex = {k: i for i, k in enumerate(embKeys)}
+        self.embIndex = {str(k).strip().lower(): i for i, k in enumerate(embKeys)}
         self.embValues = torch.from_numpy(embValues).float().to(self.device)
         
         #define solver, action builder, unnormalize latents
         
-        self.inferenceSolver = CosmosInferenceSolver(
-            cfg=cfg,diffusionModel=policyNetModel,device=self.device
+        self.inferenceSolver = CosmosInferenceSolver( 
+            cfg=cfg,diffusionModel=self.policyNetModel,device=self.device
         )
         
-        self.infereceActionBuilder = InferenceActionBuilder(
+        self.infereceActionBuilder = InferenceActionBuilder( #pyrefly:ignore
             cfg=cfg,vaeModel=modelVAE,device=self.device
-        )
+        ).to(self.device)
         
-        self.unNormalizeLatents = unNormalizeLatents(cfg)
-        
-        
-        
+        self.unNormalizeLatents = unNormalizeLatents(cfg).to(self.device)
         
     def _getEmbedding(self, textString: str) -> torch.Tensor:
-        idx = self.embIndex[textString]
-        return self.embValues[idx]  
+        cleanString = str(textString).strip().lower()
+        
+        if cleanString in self.embIndex:
+            idx = self.embIndex[cleanString]
+            return self.embValues[idx]  
+        
+        if cleanString in self.dynamicTextEmbedCache:
+            return self.dynamicTextEmbedCache[cleanString]
+        
+        with torch.no_grad():
+            newEmbedding = self.textEncoder(cleanString)
+            newEmbedding = newEmbedding.to(self.device).bfloat16()
+        self.dynamicTextEmbedCache[cleanString] = newEmbedding
+        
+        return newEmbedding  
         
     def _buildActionMask(self,vaeInput:torch.Tensor,T:int=11,H:int=28,W:int=28):
         
@@ -74,23 +95,96 @@ class CosmosInferencePolicyServer:
         
         return conditionVideoMask
     
+    @serve.batch(max_batch_size=64, batch_wait_timeout_s=0.05) #pyrefly:ignore 
+    @torch.no_grad()
+    async def predictionActions(self,observationDictList: list[dict], taskStringList: list[str]):
+        B = len(observationDictList)
+        
+        proprioList = []
+        leftImgList = []
+        rightImgList = []
+        wristImgList =[]
+        textConditionList= []
+        
+        for i in range(B):
+            obs = observationDictList[i]
+            taskString = taskStringList[i]
+            
+            proprioList.append(torch.from_numpy(obs["currentProprio"].copy()).float())
+            leftImgList.append(torch.from_numpy(obs["currentLeftImg"].copy()).permute(2, 0, 1).float())
+            rightImgList.append(torch.from_numpy(obs["currentRightImg"].copy()).permute(2, 0, 1).float())
+            wristImgList.append(torch.from_numpy(obs["currentWristImg"].copy()).permute(2, 0, 1).float())
+            
+            textConditionList.append(self._getEmbedding(taskString))
     
-    def predictionActions(self,)
+        proprioTensor = torch.stack(proprioList).to(self.device)
+        leftImgTensor = torch.stack(leftImgList).to(self.device)
+        rightImgTensor = torch.stack(rightImgList).to(self.device)
+        wristImgTensor = torch.stack(wristImgList).to(self.device)
         
+        textCondition = torch.stack(textConditionList).squeeze(1)
         
+        latentInput = self.infereceActionBuilder(
+            currentProprio=proprioTensor,
+            currentWristImg=wristImgTensor,
+            currentLeftImg=leftImgTensor,
+            currentRightImg=rightImgTensor,
+            )
         
+        conditioningMask = self._buildActionMask(latentInput)
         
+        denoisedLatent = self.inferenceSolver.runSolver(
+            latentInput,textCondition,conditioningMask,self.actionSolverSteps
+        )
+        extractedData = self.unNormalizeLatents(denoisedLatent)
         
+        physicalActions = extractedData["actions"].cpu().numpy()
         
-
-
-
-
-
+        return [physicalActions[i] for i in range(B)]
+        
+#distributed robocasa wrapper. 
+@ray.remote(num_cpus=1,num_gpus=0.1)
+def distributedRobocasaWorker(cfg:DictConfig,taskName:str,numActionsLength:int,maxSteps:int,seed:int,episodeIDX:int,inferenceServer,HDF5Writer,numScenes:int=5):
+    if not isinstance(cfg, DictConfig):
+        cfg = OmegaConf.create(cfg) #pyrefly:ignore
+    
+    roboEnv = RoboCasaEnvironmentWorker(
+    cfg=cfg,  
+    taskName=taskName,
+    numActionsLength=numActionsLength,
+    seed=seed,
+    episodeIDX=episodeIDX,
+    numScenes=numScenes
+    )
+    
+    observation=roboEnv.reset()
+    taskSentence = roboEnv.taskSentence
+    
+    done=False
+    totalSteps= 0
+    while not done and totalSteps < maxSteps:
+        actionChunk = inferenceServer.predictionActions.remote(
+            observation, taskSentence
+        ).result()
+        result = roboEnv.step(actionChunk)
+        observation = result["observation"]
+        done = result["done"]
+        totalSteps += result["timestep"]
+    
+    episodeData = roboEnv.prepareHistoryExport()
+    fileName = f"task={taskName}--ep={episodeIDX}--success={episodeData['success']}.hdf5"
+    ray.get(HDF5Writer.saveEpisode.remote(episodeData, fileName))
+    roboEnv.close()
+    return {"success": episodeData["success"], "steps": totalSteps}
+    
+    
+    
 
 @ray.remote(num_cpus=1)
-class HDF5Saver():
+class HDF5Writer():
     def __init__(self,cfg:DictConfig,saveDir:str):
+        if not isinstance(cfg, DictConfig):
+            cfg = OmegaConf.create(cfg) #pyrefly:ignore 
         self.cfg = cfg 
         self.saveDir = Path(saveDir)
         self.saveDir.mkdir(parents=True,exist_ok=True)

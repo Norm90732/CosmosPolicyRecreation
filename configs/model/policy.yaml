@@ -2,6 +2,7 @@ name: policyModel
 
 
 training:
+  maxSteps: 45000
   gradClip: 2.0
   optimizer:
     lr: 1e-4 #sqrt scale for new batch 
@@ -22,7 +23,7 @@ training:
     flatlineScheduler:
       factor: 0.06
 
-  globalBatch: 768 #make sure globalBatch / (worldSize * localBatch) is even divisibility. 
+  globalBatch: 800 #make sure globalBatch / (worldSize * localBatch) is even divisibility. 
 
 stage: 
   stageNumber: 1
@@ -49,22 +50,22 @@ logging:
   l1LogEvery: 100
   wandb:
     project: "CosmosPolicyRecreation"
-    name: "Stage1-Run-40k-Base"
+    name: "Stage1-Run-45k-Rerun"
   checkpointing: 
     resumeCheckpoint: null
     checkpointEvery: 500
     checkpointSaveDir: "/home/normansmith/blue_storage/projects/CosmosPolicyRecreation/checkpoints/cosmos2.52B/stage1Training"
-    numToKeep: 3
+    numToKeep: 5
 
 
 resources:
   scaling:
     totalWorkers: 8
     resourcesPerWorker:
-      CPU: 4
+      CPU: 6
       GPU: 1
   dataloader:
-    batchSize: 32
-    numWorkers: 2
-    prefetchFactor: 2
+    batchSize: 100
+    numWorkers: 5
+    prefetchFactor: 4
     pinMemory: True

@@ -68,9 +68,9 @@ Embed Dim = 100352
 
 
 class ReasonTextEncoder(torch.nn.Module):
-    def __init__(self, text_encoder):
+    def __init__(self, textEncoder):
         super().__init__()
-        self.textEncoder = text_encoder
+        self.textEncoder = textEncoder
 
     @torch.no_grad()
     @jaxtyped(typechecker=beartype)

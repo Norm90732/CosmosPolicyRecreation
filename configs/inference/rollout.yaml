@@ -17,28 +17,74 @@ noiseScheduler:
   rho: 7
 
 solver:
-  actionSteps: 5
-  worldSteps: 1 
-  valueSteps: 1
+    actionSteps: 5
+    worldSteps: 1
+    valueSteps: 1
 
-actionHorizon: 16
+actionHorizon: 32
+openLoopSteps: 16
+numTrialsPerTask: 50
+numScenes: 5
+baseSeeds:
+  - 195
+  - 196
+  - 197
+  
+controlerConfigDir: "/home/normansmith/blue_storage/projects/CosmosPolicyRecreation/data/robocasa_controller_configs.pkl"
+rolloutSaveDir: "/home/normansmith/blue_storage/projects/CosmosPolicyRecreation/rollouts/"
+jsonSaveDir: "/home/normansmith/blue_storage/projects/CosmosPolicyRecreation/simulatorResults"
 
-numTrialsPerTask: 50 
-numScenes: 5 
+taskMaxSteps:
+  PnPCounterToCab: 500
+  PnPCabToCounter: 500
+  PnPCounterToSink: 700
+  PnPSinkToCounter: 500
+  PnPCounterToMicrowave: 600
+  PnPMicrowaveToCounter: 500
+  PnPCounterToStove: 500
+  PnPStoveToCounter: 500
+  OpenSingleDoor: 500
+  CloseSingleDoor: 500
+  OpenDoubleDoor: 1000
+  CloseDoubleDoor: 700
+  OpenDrawer: 500
+  CloseDrawer: 500
+  TurnOnStove: 500
+  TurnOffStove: 500
+  TurnOnSinkFaucet: 500
+  TurnOffSinkFaucet: 500
+  TurnSinkSpout: 500
+  CoffeeSetupMug: 600
+  CoffeeServeMug: 600
+  CoffeePressButton: 300
+  TurnOnMicrowave: 500
+  TurnOffMicrowave: 500
 
-
-robocasaEnv: [
-    "PickPlaceCounterToCabinet", "PickPlaceCabinetToCounter", 
-    "PickPlaceCounterToSink", "PickPlaceSinkToCounter",
-    "PickPlaceCounterToMicrowave", "PickPlaceMicrowaveToCounter", 
-    "PickPlaceCounterToStove", "PickPlaceStoveToCounter",
-    "OpenSingleDoor", "CloseSingleDoor", "OpenDoubleDoor", "CloseDoubleDoor",
-    "OpenDrawer", "CloseDrawer",
-    "TurnOnSinkFaucet", "TurnOffSinkFaucet", "TurnSinkSpout", 
-    "TurnOnStove", "TurnOffStove",
-    "CoffeeSetupMug", "CoffeeServeMug", "CoffeePressButton", 
-    "TurnOnMicrowave", "TurnOffMicrowave"
-]
+robocasaEnvs:
+  - PnPCounterToCab
+  - PnPCabToCounter
+  - PnPCounterToSink
+  - PnPSinkToCounter
+  - PnPCounterToMicrowave
+  - PnPMicrowaveToCounter
+  - PnPCounterToStove
+  - PnPStoveToCounter
+  - OpenSingleDoor
+  - CloseSingleDoor
+  - OpenDoubleDoor
+  - CloseDoubleDoor
+  - OpenDrawer
+  - CloseDrawer
+  - TurnOnStove
+  - TurnOffStove
+  - TurnOnSinkFaucet
+  - TurnOffSinkFaucet
+  - TurnSinkSpout
+  - CoffeeSetupMug
+  - CoffeeServeMug
+  - CoffeePressButton
+  - TurnOnMicrowave
+  - TurnOffMicrowave
 
 
 

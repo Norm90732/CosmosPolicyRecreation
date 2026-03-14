@@ -204,9 +204,10 @@ class unNormalizeLatents(torch.nn.Module):
         flattenedLength = self.actionHorizon * actionDim
         
         flat = self._inverseLatentBlock(actionChunk, flattenedLength)
-        actNorm = (flat + 1.0) / 2.0                         
+        flatReshape = rearrange(flat,"b (t d) -> b t d", t = self.actionHorizon,d = self.actionDim)
+        actNorm = (flatReshape + 1.0) / 2.0                         
         actions = actNorm * (self.actMax - self.actMin) + self.actMin #pyrefly:ignore 
-        actions = rearrange(actions,"b (t d) -> b t d", t = self.actionHorizon,d = self.actionDim)
+        
         return actions 
     def unnormProp(self,propChunk):
         flat = self._inverseLatentBlock(propChunk,self.propDim)

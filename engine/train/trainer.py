@@ -1,6 +1,7 @@
 import os
 os.environ["JAXTYPING_DISABLE"] = "1"
-os.environ["RAY_TRAIN_WORKER_HEALTH_CHECK_TIMEOUT_S"] = "3600" 
+os.environ["RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S"] = "5.0"
+os.environ["RAY_TRAIN_WORKER_HEALTH_CHECK_TIMEOUT_S"] = "3600"
 os.environ["RAY_TRAIN_WORKER_GROUP_START_TIMEOUT_S"] = "3600"
 import torch
 from omegaconf import DictConfig, OmegaConf
@@ -30,7 +31,11 @@ from engine.train.trainerUtils import (
     optimizerAndSchedulerCreator,
     unwrapModel,
     l1LossGeneration,
-    lossFunctionWeighting
+    lossFunctionWeighting,
+    createAugmentationPipeline,
+    applyUnifiedCameraAug,
+    gpuCollate,
+    loadEmbeddingTableToGPU
 )
 from models.cosmosLoaderBase import EncoderVAE, CosmosDiffusionNet, loadCosmosModules
 
@@ -94,7 +99,10 @@ def trainingFunction(config: dict):
     robocasaDataloader = RoboCasaWebDataset(cfg=cfg)
 
     trainDataloader = robocasaDataloader.getDataloader()
-
+    
+    #augmentation maker 
+    augmentationPipeline = createAugmentationPipeline()
+    embeddingTableGPU = loadEmbeddingTableToGPU(cfg, device)
     # checkpoint resumption and start logic
     resumePath = cfg.model.logging.checkpointing.get("resumeCheckpoint", None)
     if resumePath and os.path.exists(resumePath):
@@ -113,6 +121,7 @@ def trainingFunction(config: dict):
     model.train()
     optimizer.zero_grad()
     for step, batch in enumerate(trainDataloader):
+        batch = gpuCollate(batch,device)
         # actions
         currentProprio = batch["currentproprio"].to(device, non_blocking=True)
         futureProprio = batch["futureproprio"].to(device, non_blocking=True)
@@ -124,7 +133,8 @@ def trainingFunction(config: dict):
         )  # dont need delete later.
         isDemo = batch["isdemo"].to(device, non_blocking=True)
         # cross attention embedding
-        crossAttentionEmbed = batch["crossattentionembed"].to(device, non_blocking=True)
+        embIdx = batch["embeddingidx"].long()
+        crossAttentionEmbed = embeddingTableGPU[embIdx]
         # current images
         currentWristImg = batch["currentwristimg.jpg"].to(device, non_blocking=True)
         currentLeftImg = batch["currentleftimg.jpg"].to(device, non_blocking=True)
@@ -133,7 +143,19 @@ def trainingFunction(config: dict):
         futureWristImg = batch["futurewristimg.jpg"].to(device, non_blocking=True)
         futureLeftImg = batch["futureleftimg.jpg"].to(device, non_blocking=True)
         futureRightImg = batch["futurerightimg.jpg"].to(device, non_blocking=True)
-
+        
+        #apply gpu augmentations 
+        (currentWristImg, currentLeftImg, currentRightImg, futureWristImg, 
+         futureLeftImg, futureRightImg) = applyUnifiedCameraAug(
+            currentWristImg, 
+            currentLeftImg, 
+            currentRightImg, 
+            futureWristImg, 
+            futureLeftImg, 
+            futureRightImg,
+            pipeline=augmentationPipeline
+        )
+        
         vaeOutput = latentBuilder(  # x0 = VAE Output
             currentProprio=currentProprio,
             currentWristImg=currentWristImg,
@@ -257,6 +279,16 @@ def trainingFunction(config: dict):
                         logDict[f"train/l1/{k}"] = v.item()
 
                 wandb.log(logDict)
+                if globalStep >= cfg.model.training.maxSteps:
+                    if rank == 0:
+                        checkpointDict = {
+                            "model": unwrapModel(model).state_dict(),
+                            "optimizer": optimizer.state_dict(),
+                            "scheduler": scheduler.state_dict(),
+                            "globalStep": globalStep,
+                        }
+                        torch.save(checkpointDict, os.path.join(cfg.model.logging.checkpointing.checkpointSaveDir, "final_47k_model.pt"))
+                    break
         
                 
     if rank == 0:
@@ -268,7 +300,6 @@ if __name__ == "__main__":
     cfg.model = OmegaConf.load("configs/model/policy.yaml")
     cfg.inference = OmegaConf.load("configs/inference/rollout.yaml")
     #ray 
-    os.environ["RAY_TRAIN_WORKER_GROUP_START_TIMEOUT_S"] = "300"
     
     ray.init( #pyrefly:ignore
         ignore_reinit_error=True #pyrefly:ignore

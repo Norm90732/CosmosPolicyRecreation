@@ -10,6 +10,7 @@ from torch.utils.data import default_collate
 from pathlib import Path
 from functools import partial
 
+
 """
 Reworked because of pickling issues when scaling. 
 """
@@ -20,9 +21,6 @@ _workerEmbIndex = None
 def _ensureMmapLoaded(mmapDir):
     global _workerEmbValues, _workerEmbIndex
     if _workerEmbValues is None:
-        _workerEmbValues = np.load(
-            Path(mmapDir, "embeddingvalues.npy"), mmap_mode="r"
-        )
         embKeys = np.load(Path(mmapDir, "embeddingkeys.npy"), allow_pickle=True)
         _workerEmbIndex = {k: i for i, k in enumerate(embKeys)}
 
@@ -58,8 +56,7 @@ def _preprocessSample(sample, mmapDir):
 
     textString = sample["taskdescription.txt"]
     idx = _workerEmbIndex[textString] #pyrefly:ignore
-    lookedUpEmbedding = torch.from_numpy(_workerEmbValues[idx].copy()) #pyrefly:ignore
-    processedSample["crossattentionembed"] = lookedUpEmbedding.squeeze(0)
+    processedSample["embeddingidx"] = torch.tensor(idx, dtype=torch.long)
 
     isDemoBool = sample["isdemo"] == b"1"
     processedSample["isdemo"] = torch.tensor(isDemoBool, dtype=torch.bool)
@@ -74,13 +71,20 @@ def _preprocessSample(sample, mmapDir):
     ]
     for key in imageKeys:
         image = sample[key]
-        torchImage = torch.from_numpy(image.copy())
-        torchImage = torchImage.permute(2, 0, 1)
+        torchImage = torch.from_numpy(image).permute(2, 0, 1).contiguous()
         processedSample[key] = torchImage
 
     return processedSample
 
+def _identityCollate(x):
+    return x
 
+def _stackCollate(samples):
+    batch = {}
+    keys = [k for k in samples[0].keys() if k != "__key__"]
+    for key in keys:
+        batch[key] = torch.stack([s[key] for s in samples])
+    return batch
 class RoboCasaWebDataset:
     def __init__(self, cfg: DictConfig):
         cfgResourcesDataloader = cfg.model.resources.dataloader
@@ -124,9 +128,7 @@ class RoboCasaWebDataset:
             mix,
             wds.decode("rgb8"),
             wds.map(preprocessFn),
-            wds.batched(
-                self.batchSize, collation_fn=default_collate, partial=False
-            ),
+            wds.batched(self.batchSize, collation_fn=_stackCollate, partial=False),
         )
 
         return wds.WebLoader(
@@ -136,7 +138,7 @@ class RoboCasaWebDataset:
             pin_memory=self.pinMemory,
             prefetch_factor=self.prefetchFactor if self.numWorkers > 0 else None,
             persistent_workers=True if self.numWorkers > 0 else False,
-            multiprocessing_context="spawn",
+            multiprocessing_context="fork",
         )
 
 

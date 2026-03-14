@@ -1,11 +1,12 @@
 # Data and outputs
-/data
+/rollouts
 /outputImages
 /checkpoints
 /outputs
 /hf_cache
 /validation
 dataset/scripts/*.slurm
+MUJOCO_LOG.TXT
 # IDE
 /.vscode
 

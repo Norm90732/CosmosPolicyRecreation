@@ -8,7 +8,9 @@ from torch.optim.lr_scheduler import (
     ConstantLR,
 )
 from torch import Tensor
-
+import torchvision.transforms.v2 as v2 
+from torchvision import tv_tensors
+import numpy as np 
 
 """
 conditioningMasks = {
@@ -123,6 +125,7 @@ def optimizerAndSchedulerCreator(model, cfg: DictConfig) -> tuple[Adam, Sequenti
     return optimizer, scheduler
 
 
+
 """
 No EMA on the policy training 
 """
@@ -202,3 +205,43 @@ def lossFunctionWeighting(
     loss = meanLossPerSample.mean()
 
     return loss
+
+#default values that Cosmos Policy Uses, config this later. 
+def createAugmentationPipeline():
+    strongAugmentationPipeline = v2.Compose([
+        v2.RandomResizedCrop(
+        size=(224, 224), 
+        scale=(0.9, 0.9), 
+        ratio=(1.0, 1.0), 
+        antialias=True
+    ),
+    v2.RandomRotation(degrees=5), #pyrefly:ignore 
+    v2.ColorJitter(
+        brightness=0.3, 
+        contrast=0.4, 
+        saturation=0.5, 
+        hue=0.05
+    )
+])
+    return strongAugmentationPipeline
+
+def applyUnifiedCameraAug(*images,pipeline:v2.Compose):
+    stackedTensor = torch.stack(images,dim=1)
+    videoWrapped = tv_tensors.Video(stackedTensor)
+    augmentedVideo= pipeline(videoWrapped)
+    return torch.unbind(augmentedVideo, dim=1)
+
+
+#gpu collator
+def gpuCollate(batch, device):
+    return {k: v.to(device, non_blocking=True) for k, v in batch.items()}
+
+def loadEmbeddingTableToGPU(cfg, device):
+    from pathlib import Path
+    embValues = np.load(
+        Path(cfg.dataset.reasonMMAP, "embeddingvalues.npy")
+    )  
+    table = torch.from_numpy(embValues).to(device=device, dtype=torch.bfloat16)
+    if table.dim() == 4:
+        table = table.squeeze(1)  
+    return table
