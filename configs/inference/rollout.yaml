@@ -1,6 +1,6 @@
 
 checkpoints: 
-  actionModelCheckpoint: /home/normansmith/blue_storage/projects/CosmosPolicyRecreation/checkpoints/cosmos2.52B/stage1Training/Stage1-Run-40k-Base/checkpoint_2026-03-10_13-52-08.980213/checkpoint_40000.pt
+  actionModelCheckpoint: /home/normansmith/blue_storage/projects/CosmosPolicyRecreation/checkpoints/cosmos2.52B/stage1Training/final_47k_model.pt
 
 
 

@@ -76,7 +76,10 @@ class RoboCasaEnvironmentWorker():
             "primary_images": [],
             "secondary_images": [],
             "proprio": [],
-            "actions":[]
+            "actions":[],
+            "predicted_wrist_latents": [],
+            "predicted_primary_latents": [],
+            "predicted_secondary_latents": [],
         }
         self.currentRawObservation = rawObservation
         self.taskSentence = self.env.get_ep_meta()["lang"]
@@ -116,7 +119,17 @@ class RoboCasaEnvironmentWorker():
             "info": info,
             "done": done or success
         }
-
+    
+    def storeWorldModelLatents(self, wristLatent, primaryLatent, secondaryLatent):
+        self.simHistory["predicted_wrist_latents"].append(
+            wristLatent.astype(np.float16)
+        )
+        self.simHistory["predicted_primary_latents"].append(
+            primaryLatent.astype(np.float16)
+        )
+        self.simHistory["predicted_secondary_latents"].append(
+            secondaryLatent.astype(np.float16)
+        )
     
     def prepareHistoryExport(self):
         formattedObservation = self._extractAndFormat(self.currentRawObservation) #pyrefly:ignore 
@@ -126,15 +139,28 @@ class RoboCasaEnvironmentWorker():
         self.simHistory["proprio"].append(formattedObservation["currentProprio"])
         self.simHistory["actions"].append(np.zeros(12, dtype=np.float32))
     
-        return {
+        exportDict = {
             "task_description": self.taskSentence,
             "success": bool(self.env._check_success()),
-            "primary_images": np.stack(self.simHistory["primary_images"], axis=0).astype(np.uint8),    
-            "secondary_images": np.stack(self.simHistory["secondary_images"], axis=0).astype(np.uint8), 
-            "wrist_images": np.stack(self.simHistory["wrist_images"], axis=0).astype(np.uint8),         
+            "primary_images": np.stack(self.simHistory["primary_images"], axis=0).astype(np.uint8),
+            "secondary_images": np.stack(self.simHistory["secondary_images"], axis=0).astype(np.uint8),
+            "wrist_images": np.stack(self.simHistory["wrist_images"], axis=0).astype(np.uint8),
             "proprio": np.stack(self.simHistory["proprio"], axis=0).astype(np.float32),
-            "actions": np.stack(self.simHistory["actions"], axis=0).astype(np.float32)
+            "actions": np.stack(self.simHistory["actions"], axis=0).astype(np.float32),
         }
+
+        if len(self.simHistory["predicted_wrist_latents"]) > 0:
+            exportDict["predicted_wrist_latents"] = np.stack(
+                self.simHistory["predicted_wrist_latents"], axis=0
+            )
+            exportDict["predicted_primary_latents"] = np.stack(
+                self.simHistory["predicted_primary_latents"], axis=0
+            )
+            exportDict["predicted_secondary_latents"] = np.stack(
+                self.simHistory["predicted_secondary_latents"], axis=0
+            )
+
+        return exportDict
         
     
     

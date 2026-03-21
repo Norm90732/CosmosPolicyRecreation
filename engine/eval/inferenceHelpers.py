@@ -1,14 +1,15 @@
 import torch 
-from engine.train.diffusion import EDMNoiseScheduler
+from engine.train.diffusion import EDMNoiseScheduler, RecFlowNoiseScheduler
 from engine.train.builder import LatentSequenceBuilder
 from cosmos_predict2._src.predict2.cosmos_policy.modules.cosmos_sampler import CosmosPolicySampler
+from cosmos_predict2._src.predict2.models.fm_solvers_unipc import FlowUniPCMultistepScheduler
 from omegaconf import DictConfig, OmegaConf
 from einops import rearrange
 """
 Inference Solver Class 
 """
 
-class CosmosInferenceSolver:
+class CosmosInferenceSolverEDM:
     def __init__(self,cfg:DictConfig,diffusionModel,device):
         self.diffusionModel = diffusionModel
         self.scheduler = CosmosPolicySampler()
@@ -84,6 +85,31 @@ class CosmosInferenceSolver:
             rho=self.rho, #default
             solver_option="2ab"
         )
+        
+        
+## FINISH THIS CLASS 
+        
+class CosmosInferenceSolverRecFlow:
+    def __init__(self,cfg:DictConfig,diffusionModel,device):
+        self.diffusionModel = diffusionModel
+        self.scheduler = FlowUniPCMultistepScheduler()
+        self.device = device 
+        self.noiseScheduler = RecFlowNoiseScheduler(
+            cfg=cfg,
+            inference=True,
+            device=device
+        )
+        
+        noiseSchedulerCFG = cfg.inference.noiseScheduler
+     
+     
+     
+     
+     
+     
+     
+     
+     
         
 #Action prediction builder
 class InferenceActionBuilder(LatentSequenceBuilder):

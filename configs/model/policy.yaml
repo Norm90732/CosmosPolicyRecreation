@@ -52,7 +52,7 @@ logging:
     project: "CosmosPolicyRecreation"
     name: "Stage1-Run-45k-Rerun"
   checkpointing: 
-    resumeCheckpoint: null
+    resumeCheckpoint: "/home/normansmith/blue_storage/projects/CosmosPolicyRecreation/checkpoints/cosmos2.52B/stage1Training/Stage1-Run-45k-Rerun/checkpoint_2026-03-16_16-14-40.673328/checkpoint_26000.pt"
     checkpointEvery: 500
     checkpointSaveDir: "/home/normansmith/blue_storage/projects/CosmosPolicyRecreation/checkpoints/cosmos2.52B/stage1Training"
     numToKeep: 5
@@ -62,10 +62,10 @@ resources:
   scaling:
     totalWorkers: 8
     resourcesPerWorker:
-      CPU: 6
+      CPU: 5
       GPU: 1
   dataloader:
     batchSize: 100
-    numWorkers: 5
+    numWorkers: 4
     prefetchFactor: 4
     pinMemory: True

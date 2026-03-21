@@ -181,4 +181,6 @@ if __name__ == "__main__":
     vaeEncoder  = EncoderVAE(vae)
     textEncoder = ReasonTextEncoder(text_encoder)
     diffNet     = CosmosDiffusionNet(net)
+    
+    print("Loaded all the models ")
 """

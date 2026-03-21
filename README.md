@@ -12,9 +12,27 @@ https://research.nvidia.com/labs/dir/cosmos-policy/cosmos_policy_index.html
 > 
 > **Contact:** normansmith@ufl.edu
 # Results
-placeholder for robo casa roll out gifs
+![First Gif](assets/firstGif.gif)
+
+*Task: Pick and Place from Counter to Cabinet.*
+
+![second Gif](assets/secondGif.gif)
+
+*Task: Turn the Sink Spout.*
+
+![third Gif](assets/thirdGif.gif)
+
+*Task: Open both Cabinet Doors.*
 ## Evaluation Metrics
-placeholder for table results 
+### RoboCasa Simulation Results
+I initially trained Predict 2.5 with Predict2 hyperparameters. I just found Cosmos Cookbook has an updated hyperparam config for training Cosmos Policy with Predict 2.5 backbone (recflow instead of edm). Starting second run with updated noise distribution and scheduler. First run was with Predict2 numbers from Paper.
+| Model / Run              | Backbone      | Demos / Task | Avg SR (%) | Training setup                       |
+|--------------------------|---------------|--------------|-----------:|--------------------------------------|
+| Cosmos Policy (paper)    | Predict2      | 50           | 67.1       | Paper (Predict2 config)             |
+| Cosmos Policy (cookbook) | Predict2.5    | 50           | 71.1       | Cookbook (Predict2.5 config)        |
+| My Implementation       | Predict2.5    | 50           | TBD        | Predict2.5 hyperparams (current)    |
+
+
 ## Training Loss Curves 
 place holder for final curve results 
 
@@ -69,6 +87,7 @@ The conditioning mask allows us to model the following :
 * *World Model:* Condition on current state and actions
 * *Value Function:* Condition on current state, actions, and future state. 
 
+### EDM Training (Predict 2.0 Backbone as in Official Paper)
 Using a EDM diffusion training objective [3], the loss is computed over unconditioned future positions with added noise. The EDM loss weights harder denoising steps. 
 
 ```python 
@@ -95,6 +114,27 @@ denoisedPrediction = (maskedXSigma * skipSigma) + (modelPrediction * outputSigma
 # Masked MSE loss with EDM sigma loss scaling
 loss = lossFunctionWeighting(lossWeighting, vaeOutput, denoisedPrediction, conditioningMasks)
 ```
+### Rectified Flow Training (Predict 2.5 Backbone as described in Cosmos Cookbook)
+```python 
+t = noiseScheduler.sampleTimestep(batchSize, device=device) #logit normal time sampling (shift=5)
+
+# build bool conditioning mask [0: objective 1: condition]
+conditioningMask = buildConditioningMask(builtLatent) 
+
+x0Noise = torch.randn_like(vaeOutput) #pure noise 
+
+x0 = conditioningMasks * vaeOutput + (1 - conditioningMasks) * x0Noise # masking with noise 
+x1 = vaeOutput #goal 
+
+target = x1 - x0 
+
+xt = (1-t)* x0 + (t * x1) #input to model 
+
+modelPrediction = model.forward(xt,t,textConditioning,conditioningMasks)
+
+loss = lossFunctionUnweighted(target,modelPrediction,conditioningMasks)
+```
+
 
 ## Inference
 At inference time, the conditioning mask is created to condition based on the current observed state, noise is added, and a solver is used. A 2nd order Adams-Bashforth EDM solver is used to iteratively denoise the future positions for 5 steps with no classifier-free guidance. Actions are recovered from index 5 through averaging and unnormalizing. Only a section of the predicted actions are used to enable receding horizon control. 

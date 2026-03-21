@@ -6,6 +6,19 @@ from torch import Tensor
 Define noise scheduler for training and inference
 """
 
+class RecFlowNoiseScheduler:
+    def __init__(self,cfg:DictConfig,inference:bool,device=torch.device):
+        if inference == True:
+            noiseSchedulerCFG = cfg.inference.noiseScheduler
+        else:
+            noiseSchedulerCFG = cfg.model.noiseScheduler
+            
+        self.logitShift = noiseSchedulerCFG.logitShift
+        
+        
+    def sampleTimestep(self,batch:int,device:torch.device)-> Tensor:
+        t=torch.sigmoid(self.logitShift + torch.randn(batch, device=device))
+        return t 
 
 class EDMNoiseScheduler:
     def __init__(self, cfg: DictConfig, inference: bool, device=torch.device):

@@ -9,7 +9,7 @@ import io
 import torch 
 import gc  
 from engine.eval.inferenceHelpers import (
-    CosmosInferenceSolver,
+    CosmosInferenceSolverEDM,
     InferenceActionBuilder,
     unNormalizeLatents
 )
@@ -31,7 +31,6 @@ class CosmosInferencePolicyServer:
         self.actionHorizon = cfg.inference.actionHorizon
         
         self.actionSolverSteps = cfg.inference.solver.actionSteps
-        
         
         print("Loading Cosmos Model")
         vae, textEncoder, net, config = loadCosmosModules(cfg)
@@ -55,7 +54,7 @@ class CosmosInferencePolicyServer:
         
         #define solver, action builder, unnormalize latents
         
-        self.inferenceSolver = CosmosInferenceSolver( 
+        self.inferenceSolver = CosmosInferenceSolverEDM( 
             cfg=cfg,diffusionModel=self.policyNetModel,device=self.device
         )
         
@@ -139,9 +138,16 @@ class CosmosInferencePolicyServer:
         extractedData = self.unNormalizeLatents(denoisedLatent)
         
         physicalActions = extractedData["actions"].cpu().numpy()
-        
-        return [physicalActions[i] for i in range(B)]
-        
+        return [
+            {
+                "actions": physicalActions[i],
+                "predictedWristLatent": denoisedLatent[i, :, 7, :, :].cpu().float().numpy(),
+                "predictedPrimaryLatent": denoisedLatent[i, :, 8, :, :].cpu().float().numpy(),
+                "predictedSecondaryLatent": denoisedLatent[i, :, 9, :, :].cpu().float().numpy(),
+            }
+            for i in range(B)
+        ]
+                
 #distributed robocasa wrapper. 
 @ray.remote(num_cpus=1,num_gpus=0.1)
 def distributedRobocasaWorker(cfg:DictConfig,taskName:str,numActionsLength:int,maxSteps:int,seed:int,episodeIDX:int,inferenceServer,HDF5Writer,numScenes:int=5):
@@ -163,13 +169,22 @@ def distributedRobocasaWorker(cfg:DictConfig,taskName:str,numActionsLength:int,m
     done=False
     totalSteps= 0
     while not done and totalSteps < maxSteps:
-        actionChunk = inferenceServer.predictionActions.remote(
+        result = inferenceServer.predictionActions.remote(
             observation, taskSentence
         ).result()
-        result = roboEnv.step(actionChunk)
-        observation = result["observation"]
-        done = result["done"]
-        totalSteps += result["timestep"]
+
+        actionChunk = result["actions"]
+
+        roboEnv.storeWorldModelLatents(
+            wristLatent=result["predictedWristLatent"],
+            primaryLatent=result["predictedPrimaryLatent"],
+            secondaryLatent=result["predictedSecondaryLatent"],
+        )
+
+        stepResult = roboEnv.step(actionChunk)
+        observation = stepResult["observation"]
+        done = stepResult["done"]
+        totalSteps += stepResult["timestep"]
     
     episodeData = roboEnv.prepareHistoryExport()
     fileName = f"task={taskName}--ep={episodeIDX}--success={episodeData['success']}.hdf5"
@@ -218,5 +233,12 @@ class HDF5Writer():
                 ds = f.create_dataset(h5Key, shape=(T,), dtype=dt)
                 for t in range(T):
                     ds[t] = self._jpegEncode(exportDict[dictKey][t])
+            for latentKey in [
+            "predicted_wrist_latents",
+            "predicted_primary_latents",
+            "predicted_secondary_latents",]:
+                if latentKey in exportDict:
+                    f.create_dataset(latentKey, data=exportDict[latentKey])
+            
                     
         return str(savePath)
