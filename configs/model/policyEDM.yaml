@@ -1,11 +1,11 @@
-name: policyModel
+name: policyModelEDM
 
-
+trainingStyle: "edm"
 training:
   maxSteps: 45000
   gradClip: 2.0
   optimizer:
-    lr: 1e-4 #sqrt scale for new batch 
+    lr: 1e-4 
     betas: [0.9, 0.999]
     eps: 1e-8
     weight_decay: 0.0

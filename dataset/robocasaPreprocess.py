@@ -228,7 +228,7 @@ def allScenesPreprocess(queue, workerId: int, cfg: DictConfig) -> None:
                             diff = 32 - len(collectedActions)
                             repeatedAction = collectedActions[-1]
                             toAppend = np.tile(repeatedAction, (diff, 1))
-                            collectedActions = np.concatenate(
+                            collectedActions = np.concatenate( #pyrefly:ignore 
                                 [collectedActions, toAppend]
                             )
 
@@ -383,8 +383,8 @@ def main() -> None:
     numWorkers = cfg.dataset.numWorkers
 
     workers = [
-        successOnlyPreprocess.remote(successQueue, i, cfg)
-        for i in range(numWorkers)  # pyrefly:ignore
+        successOnlyPreprocess.remote(successQueue, i, cfg) # pyrefly:ignore
+        for i in range(numWorkers)  
     ]
 
     producerOne = fileProducer.remote(allSuccesses, successQueue, numWorkers)
@@ -394,8 +394,8 @@ def main() -> None:
     allQueue = Queue()
 
     workers2 = [
-        allScenesPreprocess.remote(allQueue, i, cfg) for i in range(numWorkers)
-    ]  # pyrefly:ignore
+        allScenesPreprocess.remote(allQueue, i, cfg) for i in range(numWorkers) # pyrefly:ignore
+    ]  
 
     producerTwo = fileProducer.remote(allEpisodes, allQueue, numWorkers)
     ray.get([producerTwo] + workers2)

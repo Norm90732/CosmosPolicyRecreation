@@ -1,3 +1,4 @@
+from multiprocessing import Value
 import torch
 from omegaconf import DictConfig
 from torch.optim import Adam
@@ -8,9 +9,9 @@ from torch.optim.lr_scheduler import (
     ConstantLR,
 )
 from torch import Tensor
-import torchvision.transforms.v2 as v2 
+import torchvision.transforms.v2 as v2
 from torchvision import tv_tensors
-import numpy as np 
+import numpy as np
 
 """
 conditioningMasks = {
@@ -82,6 +83,137 @@ def buildConditioningMasks(
     return conditionVideoMask, isPolicy, isWorldModel, isValueFunction  # pyrefly:ignore
 
 
+""""
+Training Loop for RecFlow or EDM to abstract away from trainer
+"""
+
+
+class NoiseTrainer:
+    def __init__(self, trainingStyle: str, noiseScheduler):
+        if trainingStyle not in ("edm", "recflow"):
+            raise ValueError("incorrectTraining Style selected")
+
+        self.trainingStyle = trainingStyle
+        self.noiseScheduler = noiseScheduler
+
+    def _EdmForward(
+        self,
+        model,
+        vaeOutput,
+        crossAttentionEmbed,
+        device,
+        conditioningMasks,
+        paddingMask,
+        batchSize,
+        T,
+    ):
+        sigma = self.noiseScheduler.sampleSigma(batchSize, device=device)
+        skipSigma, outputSigma, cinSigma, noiseSigma, lossWeighting = (
+            self.noiseScheduler.EDMScalingFactors(sigma)
+        )
+
+        sigma = sigma.view(batchSize, 1, 1, 1, 1)
+        skipSigma = skipSigma.view(batchSize, 1, 1, 1, 1)
+        outputSigma = outputSigma.view(batchSize, 1, 1, 1, 1)
+        cinSigma = cinSigma.view(batchSize, 1, 1, 1, 1)
+        noiseSigma = noiseSigma.view(batchSize, 1).repeat(1, T)  # b,T
+        lossWeighting = lossWeighting.view(batchSize, 1, 1, 1, 1)
+        epsilon = torch.randn_like(vaeOutput)
+
+        xNoise = vaeOutput + (sigma * epsilon)  # xSigma = y + sigma * eps
+
+        # masking the input
+        maskedXSigma = conditioningMasks * vaeOutput + (1 - conditioningMasks) * xNoise
+        networkInput = maskedXSigma * cinSigma
+
+        networkOutput = model.forward(
+            latent=networkInput,
+            timesteps=noiseSigma,
+            crossAttentionEmbed=crossAttentionEmbed,
+            conditionVideoMask=conditioningMasks,
+            paddingMask=paddingMask,
+        )
+
+        denoisedPrediction = (maskedXSigma * skipSigma) + (networkOutput * outputSigma)
+
+        loss = lossFunctionWeighting(
+            lossWeighting, vaeOutput, denoisedPrediction, conditioningMasks
+        )
+
+        return loss, denoisedPrediction
+
+    def _RecFlowForward(
+        self,
+        model,
+        vaeOutput,
+        crossAttentionEmbed,
+        device,
+        conditioningMasks,
+        paddingMask,
+        batchSize,
+        T,
+    ):
+        t = self.noiseScheduler.sampleTimestep(batchSize, device=device)
+        tExpand = t.view(batchSize, 1, 1, 1, 1)
+        tInput = t.view(batchSize, 1).repeat(1, T)
+        x0Noise = torch.randn_like(vaeOutput)
+
+        x0 = conditioningMasks * vaeOutput + (1 - conditioningMasks) * x0Noise
+        x1 = vaeOutput
+
+        target = x0 - x1
+
+        xt = (1 - tExpand) * x1 + (tExpand * x0)
+
+        velocityPred = model.forward(
+            latent=xt,
+            timesteps=tInput,
+            crossAttentionEmbed=crossAttentionEmbed,
+            conditionVideoMask=conditioningMasks,
+            paddingMask=paddingMask,
+        )
+
+        loss = lossFunctionUnWeighting(target, velocityPred, conditioningMasks)
+        with torch.no_grad():
+            x1Prediction = xt - tExpand * velocityPred
+
+        return loss, x1Prediction
+
+    def forward(
+        self,
+        model,
+        vaeOutput,
+        crossAttentionEmbed,
+        device,
+        conditioningMasks,
+        paddingMask,
+        batchSize,
+        T,
+    ):
+        if self.trainingStyle == "edm":
+            return self._EdmForward(
+                model,
+                vaeOutput,
+                crossAttentionEmbed,
+                device,
+                conditioningMasks,
+                paddingMask,
+                batchSize,
+                T,
+            )
+        else:
+            return self._RecFlowForward(
+                model,
+                vaeOutput,
+                crossAttentionEmbed,
+                device,
+                conditioningMasks,
+                paddingMask,
+                batchSize,
+                T,
+            )
+
+
 def optimizerAndSchedulerCreator(model, cfg: DictConfig) -> tuple[Adam, SequentialLR]:
     cfgOptimizer = cfg.model.training.optimizer
     cfgScheduler = cfg.model.training.scheduler
@@ -125,10 +257,10 @@ def optimizerAndSchedulerCreator(model, cfg: DictConfig) -> tuple[Adam, Sequenti
     return optimizer, scheduler
 
 
-
 """
 No EMA on the policy training 
 """
+
 
 def unwrapModel(model):
     return model.module if hasattr(model, "module") else model
@@ -172,7 +304,7 @@ def l1LossGeneration(
         "l1ValueWM": maskedL1([10], isWorldModel),
         "l1ValueVF": maskedL1([10], isValueFunction),
     }
-    
+
     metrics["l1FutureProprio"] = (
         metrics["l1FutureProprioPolicy"] + metrics["l1FutureProprioWM"]
     ) / 2
@@ -206,42 +338,52 @@ def lossFunctionWeighting(
 
     return loss
 
-#default values that Cosmos Policy Uses, config this later. 
+
+def lossFunctionUnWeighting(vaeOutput, denoisedPrediction, conditioningMasks):
+    B, C, T, H, W = vaeOutput.shape
+    targetMask = 1.0 - conditioningMasks
+    perPixelMSE = (denoisedPrediction - vaeOutput) ** 2
+    maskedMSE = perPixelMSE * targetMask
+    lossPerSample = maskedMSE.sum(dim=[1, 2, 3, 4])
+    validElementsPerSample = (targetMask).sum(dim=[1, 2, 3, 4]).clamp_min(1.0)
+
+    meanLossPerSample = lossPerSample / validElementsPerSample
+    loss = meanLossPerSample.mean()
+
+    return loss
+
+
+# default values that Cosmos Policy Uses, config this later.
 def createAugmentationPipeline():
-    strongAugmentationPipeline = v2.Compose([
-        v2.RandomResizedCrop(
-        size=(224, 224), 
-        scale=(0.9, 0.9), 
-        ratio=(1.0, 1.0), 
-        antialias=True
-    ),
-    v2.RandomRotation(degrees=5), #pyrefly:ignore 
-    v2.ColorJitter(
-        brightness=0.3, 
-        contrast=0.4, 
-        saturation=0.5, 
-        hue=0.05
+    strongAugmentationPipeline = v2.Compose(
+        [
+            v2.RandomResizedCrop(
+                size=(224, 224), scale=(0.9, 0.9), ratio=(1.0, 1.0), antialias=True
+            ),
+            v2.RandomRotation(degrees=5),  # pyrefly:ignore
+            v2.ColorJitter(brightness=0.3, contrast=0.4, saturation=0.5, hue=0.05),
+        ]
     )
-])
     return strongAugmentationPipeline
 
-def applyUnifiedCameraAug(*images,pipeline:v2.Compose):
-    stackedTensor = torch.stack(images,dim=1)
+
+def applyUnifiedCameraAug(*images, pipeline: v2.Compose):
+    stackedTensor = torch.stack(images, dim=1)
     videoWrapped = tv_tensors.Video(stackedTensor)
-    augmentedVideo= pipeline(videoWrapped)
+    augmentedVideo = pipeline(videoWrapped)
     return torch.unbind(augmentedVideo, dim=1)
 
 
-#gpu collator
+# gpu collator
 def gpuCollate(batch, device):
     return {k: v.to(device, non_blocking=True) for k, v in batch.items()}
 
+
 def loadEmbeddingTableToGPU(cfg, device):
     from pathlib import Path
-    embValues = np.load(
-        Path(cfg.dataset.reasonMMAP, "embeddingvalues.npy")
-    )  
+
+    embValues = np.load(Path(cfg.dataset.reasonMMAP, "embeddingvalues.npy"))
     table = torch.from_numpy(embValues).to(device=device, dtype=torch.bfloat16)
     if table.dim() == 4:
-        table = table.squeeze(1)  
+        table = table.squeeze(1)
     return table

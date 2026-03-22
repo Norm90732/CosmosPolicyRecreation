@@ -9,7 +9,7 @@ from beartype import beartype
 from typing import Optional
 
 
-# base loader 
+# base loader
 def loadCosmosModules(cfg: DictConfig):
     model, config = load_model_from_checkpoint(
         experiment_name="Stage-c_pt_4-reason_embeddings-v1p1-Index-26-Size-2B-Res-720-Fps-16-Note-T2V_high_sigma_loss_reweighted_1_1_rectified_flow_only_resume2",
@@ -18,8 +18,7 @@ def loadCosmosModules(cfg: DictConfig):
         load_ema_to_reg=True,
         experiment_opts=["~data_train"],
     )
-    
-            
+
     vae = model.tokenizer
     textEncoder = model.text_encoder
     net = model.net
@@ -36,6 +35,7 @@ Wan Video 2.1 VAE
 #(B, 16, 1 + (T-1)//4, H//8, W//8)
 """
 
+
 class EncoderVAE(torch.nn.Module):
     def __init__(self, vae):
         super().__init__()
@@ -48,6 +48,7 @@ class EncoderVAE(torch.nn.Module):
     ) -> Float[Tensor, "b 16 latentT latentH latentW"]:
         return self.vae.encode(x)
 
+
 class DecoderVAE(torch.nn.Module):
     def __init__(self, vae):
         super().__init__()
@@ -59,7 +60,8 @@ class DecoderVAE(torch.nn.Module):
         self, z: Float[Tensor, "b c tLatent hLatent wLatent"]
     ) -> Float[Tensor, "b rgb t hReal wReal"]:
         return self.vae.decode(z)
-    
+
+
 """
 Cosmos Reason 1 Text Encoder 
 
@@ -149,15 +151,13 @@ class CosmosDiffusionNet(torch.nn.Module):
         dataType: DataType = DataType.VIDEO,
         imgContextEmbed: Optional[torch.Tensor] = None,
     ) -> Float[Tensor, "b c t h w"]:
-
         latent = latent.to(torch.bfloat16)
         timesteps = timesteps.to(torch.bfloat16)
         crossAttentionEmbed = crossAttentionEmbed.to(torch.bfloat16)
         conditionVideoMask = conditionVideoMask.to(torch.bfloat16)
         if paddingMask is not None:
             paddingMask = paddingMask.to(torch.bfloat16)
-        
-        
+
         return self.net(
             x_B_C_T_H_W=latent,
             timesteps_B_T=timesteps,

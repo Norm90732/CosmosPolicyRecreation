@@ -126,13 +126,13 @@ x0Noise = torch.randn_like(vaeOutput) #pure noise
 x0 = conditioningMasks * vaeOutput + (1 - conditioningMasks) * x0Noise # masking with noise 
 x1 = vaeOutput #goal 
 
-target = x1 - x0 
+target = x0 - x1 
 
-xt = (1-t)* x0 + (t * x1) #input to model 
+xt = (1-t)* x1 + (t * x0) #input to model 
 
-modelPrediction = model.forward(xt,t,textConditioning,conditioningMasks)
+velocityPred = model.forward(xt,t,textConditioning,conditioningMasks)
 
-loss = lossFunctionUnweighted(target,modelPrediction,conditioningMasks)
+loss = lossFunctionUnweighted(target,velocityPred,conditioningMasks)
 ```
 
 

@@ -1,23 +1,34 @@
 from omegaconf import DictConfig
 import os
+
 os.environ["MUJOCO_GL"] = "egl"
 import numpy as np
 import robosuite
-import robocasa  #pyrefly:ignore 
-import pickle 
-class RoboCasaEnvironmentWorker():
-    def __init__(self,cfg:DictConfig,taskName:str,numActionsLength:int,seed:int,episodeIDX:int,numScenes:int=5) -> None:
-        sceneIndex = (episodeIDX //10) % numScenes
+import robocasa  # pyrefly:ignore
+import pickle
+
+
+class RoboCasaEnvironmentWorker:
+    def __init__(
+        self,
+        cfg: DictConfig,
+        taskName: str,
+        numActionsLength: int,
+        seed: int,
+        episodeIDX: int,
+        numScenes: int = 5,
+    ) -> None:
+        sceneIndex = (episodeIDX // 10) % numScenes
         self.taskName = taskName
-        layoutStyleIds = [(1,1), (2,2), (4,4), (6,9), (7,10)]
-        
+        layoutStyleIds = [(1, 1), (2, 2), (4, 4), (6, 9), (7, 10)]
+
         layoutStyle = layoutStyleIds[sceneIndex]
-        
+
         controllerConfigPath = cfg.inference.controlerConfigDir
-        
+
         with open(controllerConfigPath, "rb") as f:
             controllerconfigs = pickle.load(f)
-            
+
         env_kwargs = {
             "env_name": taskName,
             "robots": "PandaMobile",
@@ -25,58 +36,55 @@ class RoboCasaEnvironmentWorker():
             "has_offscreen_renderer": True,
             "use_camera_obs": True,
             "camera_names": [
-            "robot0_agentview_left",     
-            "robot0_agentview_right",   
-            "robot0_eye_in_hand"        #wrist
-        ],
-            "camera_widths": 224,             
+                "robot0_agentview_left",
+                "robot0_agentview_right",
+                "robot0_eye_in_hand",  # wrist
+            ],
+            "camera_widths": 224,
             "camera_heights": 224,
             "seed": seed,
             "layout_and_style_ids": (layoutStyle,),
             "controller_configs": controllerconfigs,
             "obj_instance_split": "B",
         }
-    
+
         self.env = robosuite.make(**env_kwargs)
-        
-        self.numActions = numActionsLength #number of steps to execute 
-        
+
+        self.numActions = numActionsLength  # number of steps to execute
+
         self.currentRawObservation = None
         self.simHistory = {}
-        
-        
-    def _extractAndFormat(self,observationDictionary:dict):
+
+    def _extractAndFormat(self, observationDictionary: dict):
         leftImg = observationDictionary["robot0_agentview_left_image"][::-1]
         rightImg = observationDictionary["robot0_agentview_right_image"][::-1]
         wristImg = observationDictionary["robot0_eye_in_hand_image"][::-1]
-        
+
         gripperPos = observationDictionary["robot0_gripper_qpos"]
         eefPos = observationDictionary["robot0_eef_pos"]
         eefQuat = observationDictionary["robot0_eef_quat"]
-        
-        proprio = np.concatenate([
-            gripperPos,eefPos,eefQuat
-        ])
-        
+
+        proprio = np.concatenate([gripperPos, eefPos, eefQuat])
+
         return {
-            "currentProprio":proprio,
-            "currentLeftImg":leftImg,
+            "currentProprio": proprio,
+            "currentLeftImg": leftImg,
             "currentRightImg": rightImg,
-            "currentWristImg": wristImg
+            "currentWristImg": wristImg,
         }
 
-    def reset(self)->dict:
+    def reset(self) -> dict:
         rawObservation = self.env.reset()
-        #policy code uses stabilizes the env 
+        # policy code uses stabilizes the env
         for _ in range(10):
             rawObservation, _, _, _ = self.env.step(np.zeros(self.env.action_dim))
-        
+
         self.simHistory = {
             "wrist_images": [],
             "primary_images": [],
             "secondary_images": [],
             "proprio": [],
-            "actions":[],
+            "actions": [],
             "predicted_wrist_latents": [],
             "predicted_primary_latents": [],
             "predicted_secondary_latents": [],
@@ -84,42 +92,49 @@ class RoboCasaEnvironmentWorker():
         self.currentRawObservation = rawObservation
         self.taskSentence = self.env.get_ep_meta()["lang"]
         return self._extractAndFormat(rawObservation)
-    
-    
-    def step(self,actionSequence): 
-        #predict 32, 7 chunk -> 16, 12 
+
+    def step(self, actionSequence):
+        # predict 32, 7 chunk -> 16, 12
         if actionSequence.shape[-1] == 7:
             seqLen = actionSequence.shape[0]
             mobileBase = np.zeros((seqLen, 5))
-            mobileBase[:, -1] = -1.0 
-            actionSequence = np.concatenate([actionSequence, mobileBase], axis=1) #size 12 
-            
-        numSteps = min(self.numActions,actionSequence.shape[0])
-            
-        for i in range(0,numSteps):
+            mobileBase[:, -1] = -1.0
+            actionSequence = np.concatenate( # pyrefly:ignore
+                [actionSequence, mobileBase], axis=1 
+            )  # size 12
+
+        numSteps = min(self.numActions, actionSequence.shape[0])
+
+        for i in range(0, numSteps):
             predictedAction = actionSequence[i]
-            
-            formattedObs = self._extractAndFormat(self.currentRawObservation) # pyrefly:ignore
+
+            formattedObs = self._extractAndFormat(
+                self.currentRawObservation # pyrefly:ignore
+            )  
             self.simHistory["wrist_images"].append(formattedObs["currentWristImg"])
             self.simHistory["primary_images"].append(formattedObs["currentLeftImg"])
             self.simHistory["secondary_images"].append(formattedObs["currentRightImg"])
             self.simHistory["proprio"].append(formattedObs["currentProprio"])
             self.simHistory["actions"].append(predictedAction)
-            self.currentRawObservation, reward, done, info = self.env.step(predictedAction)
-            
+            self.currentRawObservation, reward, done, info = self.env.step(
+                predictedAction
+            )
+
             success = self.env._check_success()
             if success == True:
-                break 
-        
+                break
+
         return {
             "success": bool(self.env._check_success()),
             "timestep": i + 1,
-            "observation": self._extractAndFormat(self.currentRawObservation), #pyrefly:ignore 
+            "observation": self._extractAndFormat(
+                self.currentRawObservation # pyrefly:ignore
+            ),  
             "reward": reward,
             "info": info,
-            "done": done or success
+            "done": done or success,
         }
-    
+
     def storeWorldModelLatents(self, wristLatent, primaryLatent, secondaryLatent):
         self.simHistory["predicted_wrist_latents"].append(
             wristLatent.astype(np.float16)
@@ -130,21 +145,31 @@ class RoboCasaEnvironmentWorker():
         self.simHistory["predicted_secondary_latents"].append(
             secondaryLatent.astype(np.float16)
         )
-    
+
     def prepareHistoryExport(self):
-        formattedObservation = self._extractAndFormat(self.currentRawObservation) #pyrefly:ignore 
+        formattedObservation = self._extractAndFormat(
+            self.currentRawObservation # pyrefly:ignore
+        )  
         self.simHistory["primary_images"].append(formattedObservation["currentLeftImg"])
-        self.simHistory["secondary_images"].append(formattedObservation["currentRightImg"])
+        self.simHistory["secondary_images"].append(
+            formattedObservation["currentRightImg"]
+        )
         self.simHistory["wrist_images"].append(formattedObservation["currentWristImg"])
         self.simHistory["proprio"].append(formattedObservation["currentProprio"])
         self.simHistory["actions"].append(np.zeros(12, dtype=np.float32))
-    
+
         exportDict = {
             "task_description": self.taskSentence,
             "success": bool(self.env._check_success()),
-            "primary_images": np.stack(self.simHistory["primary_images"], axis=0).astype(np.uint8),
-            "secondary_images": np.stack(self.simHistory["secondary_images"], axis=0).astype(np.uint8),
-            "wrist_images": np.stack(self.simHistory["wrist_images"], axis=0).astype(np.uint8),
+            "primary_images": np.stack(
+                self.simHistory["primary_images"], axis=0
+            ).astype(np.uint8),
+            "secondary_images": np.stack(
+                self.simHistory["secondary_images"], axis=0
+            ).astype(np.uint8),
+            "wrist_images": np.stack(self.simHistory["wrist_images"], axis=0).astype(
+                np.uint8
+            ),
             "proprio": np.stack(self.simHistory["proprio"], axis=0).astype(np.float32),
             "actions": np.stack(self.simHistory["actions"], axis=0).astype(np.float32),
         }
@@ -161,11 +186,7 @@ class RoboCasaEnvironmentWorker():
             )
 
         return exportDict
-        
-    
-    
-    def close(self):
-        self.env.close()    
-        del self.env 
-    
 
+    def close(self):
+        self.env.close()
+        del self.env

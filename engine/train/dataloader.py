@@ -18,6 +18,7 @@ Reworked because of pickling issues when scaling.
 _workerEmbValues = None
 _workerEmbIndex = None
 
+
 def _ensureMmapLoaded(mmapDir):
     global _workerEmbValues, _workerEmbIndex
     if _workerEmbValues is None:
@@ -29,33 +30,29 @@ def _tagDemo(s):
     s["isdemo"] = b"1"
     return s
 
+
 def _tagRollout(s):
     s["isdemo"] = b"0"
     return s
+
 
 def _preprocessSample(sample, mmapDir):
     _ensureMmapLoaded(mmapDir)
     processedSample = {}
     processedSample["__key__"] = sample["__key__"]
 
-    processedSample["futurevalue"] = torch.from_numpy(
-        sample["futurevalue.npy"]
-    ).float()
+    processedSample["futurevalue"] = torch.from_numpy(sample["futurevalue.npy"]).float()
     processedSample["collectedactions"] = torch.from_numpy(
         sample["collectedactions.npy"]
     )
-    processedSample["currentproprio"] = torch.from_numpy(
-        sample["currentproprio.npy"]
-    )
-    processedSample["futureproprio"] = torch.from_numpy(
-        sample["futureproprio.npy"]
-    )
+    processedSample["currentproprio"] = torch.from_numpy(sample["currentproprio.npy"])
+    processedSample["futureproprio"] = torch.from_numpy(sample["futureproprio.npy"])
     processedSample["issuccess"] = torch.tensor(
         sample["issuccess.json"], dtype=torch.float32
     )
 
     textString = sample["taskdescription.txt"]
-    idx = _workerEmbIndex[textString] #pyrefly:ignore
+    idx = _workerEmbIndex[textString]  # pyrefly:ignore
     processedSample["embeddingidx"] = torch.tensor(idx, dtype=torch.long)
 
     isDemoBool = sample["isdemo"] == b"1"
@@ -76,8 +73,10 @@ def _preprocessSample(sample, mmapDir):
 
     return processedSample
 
+
 def _identityCollate(x):
     return x
+
 
 def _stackCollate(samples):
     batch = {}
@@ -85,6 +84,8 @@ def _stackCollate(samples):
     for key in keys:
         batch[key] = torch.stack([s[key] for s in samples])
     return batch
+
+
 class RoboCasaWebDataset:
     def __init__(self, cfg: DictConfig):
         cfgResourcesDataloader = cfg.model.resources.dataloader
@@ -121,7 +122,7 @@ class RoboCasaWebDataset:
             [pipeDemo, pipeRollout],
             [self.onlySuccessSample, self.allScenesSample],
         )
-        
+
         preprocessFn = partial(_preprocessSample, mmapDir=self.mmapDir)
 
         pipeline = wds.DataPipeline(
@@ -147,14 +148,16 @@ def mmapMaker(cfg: DictConfig) -> None:
     with open(embeddingPath, "rb") as f:
         d = pickle.load(f)
     keys = list(d.keys())
-    embeddings = np.stack([
-        d[k].to(torch.float32).numpy() if hasattr(d[k], 'numpy')
-        else np.array(d[k], dtype=np.float32)
-        for k in keys
-    ]).astype(np.float32)
+    embeddings = np.stack(
+        [
+            d[k].to(torch.float32).numpy()
+            if hasattr(d[k], "numpy")
+            else np.array(d[k], dtype=np.float32)
+            for k in keys
+        ]
+    ).astype(np.float32)
     saveDim = cfg.dataset.reasonMMAP
     np.save(Path(saveDim, "embeddingkeys.npy"), np.array(keys))
     np.save(Path(saveDim, "embeddingvalues.npy"), embeddings)
-    
-    
-    return None 
+
+    return None

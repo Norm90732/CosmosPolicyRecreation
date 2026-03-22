@@ -124,7 +124,6 @@ class LatentSequenceBuilder(torch.nn.Module):
         collectedActions,  # B, 32, 7
         futureProprio,  # B,9
     ) -> tuple[Tensor, Tensor, Tensor]:
-
         eps = 1e-8
         currentPropScaled = (currentProprio - self.propMin) / (
             (self.propMax - self.propMin) + eps  # pyrefly:ignore

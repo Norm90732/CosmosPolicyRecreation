@@ -1,6 +1,8 @@
 import os
 os.environ["JAXTYPING_DISABLE"] = "1"
-os.environ["RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S"] = "5.0"
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
+os.environ["HF_DATASETS_OFFLINE"] = "1"
 os.environ["RAY_TRAIN_WORKER_HEALTH_CHECK_TIMEOUT_S"] = "3600"
 os.environ["RAY_TRAIN_WORKER_GROUP_START_TIMEOUT_S"] = "3600"
 import torch
@@ -9,36 +11,38 @@ import hydra
 from einops import rearrange, repeat
 import numpy as np
 import gc
+
 # distributed training
 import ray
 import ray.train
 import ray.train.torch
-from ray.train.torch import TorchTrainer
-from ray.train import ScalingConfig, RunConfig, Checkpoint,CheckpointConfig
+from ray.train.torch import TorchTrainer, TorchConfig
+from ray.train import ScalingConfig, RunConfig, Checkpoint, CheckpointConfig
 from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
 
 # logging
 import wandb
 import tempfile
 import io
+import time
+import glob
 
 # Constructed Modules Imports
 from engine.train.builder import LatentSequenceBuilder
-from engine.train.diffusion import EDMNoiseScheduler
+from engine.train.diffusion import EDMNoiseScheduler, RecFlowNoiseScheduler
 from engine.train.dataloader import RoboCasaWebDataset
 from engine.train.trainerUtils import (
     buildConditioningMasks,
+    NoiseTrainer,
     optimizerAndSchedulerCreator,
     unwrapModel,
     l1LossGeneration,
-    lossFunctionWeighting,
     createAugmentationPipeline,
     applyUnifiedCameraAug,
     gpuCollate,
-    loadEmbeddingTableToGPU
+    loadEmbeddingTableToGPU,
 )
 from models.cosmosLoaderBase import EncoderVAE, CosmosDiffusionNet, loadCosmosModules
-
 
 
 def trainingFunction(config: dict):
@@ -46,29 +50,29 @@ def trainingFunction(config: dict):
     rank = ray.train.get_context().get_world_rank()
     worldSize = ray.train.get_context().get_world_size()
     device = torch.device(f"cuda:{ray.train.get_context().get_local_rank()}")
+    # constants def
+    stage = cfg.model.stage.stageNumber
+    valueFunctionVariant = str(cfg.model.stage.valueFunctionVariant)
+    gradAccum = cfg.model.training.globalBatch // (
+        worldSize * cfg.model.resources.dataloader.batchSize
+    )
+    gradClip = cfg.model.training.gradClip
+    l1LogEvery = cfg.model.logging.l1LogEvery
+    checkpointEvery = cfg.model.logging.checkpointing.checkpointEvery
 
-
-    
     if rank == 0:
         wandb.init(
             project=cfg.model.logging.wandb.project,
             config=OmegaConf.to_container(cfg, resolve=True),  # pyrefly:ignore
             name=cfg.model.logging.wandb.name,
-            resume="allow"
         )
 
     print("starting model load on rank", rank)
-    # constants def
-    stage = cfg.model.stage.stageNumber
-    valueFunctionVariant = str(cfg.model.stage.valueFunctionVariant)
-    gradAccum = cfg.model.training.globalBatch // (worldSize * cfg.model.resources.dataloader.batchSize)
-    gradClip = cfg.model.training.gradClip
-    l1LogEvery = cfg.model.logging.l1LogEvery
-    checkpointEvery = cfg.model.logging.checkpointing.checkpointEvery
-    
-    vae, textEncoder, net, config = loadCosmosModules(cfg)  # pyrefly:ignore
 
+    vae, textEncoder, net, config = loadCosmosModules(cfg)  # pyrefly:ignore
+   
     # define VAE
+
     modelVAE = EncoderVAE(vae)
 
     # define modelDiT
@@ -82,7 +86,11 @@ def trainingFunction(config: dict):
 
     # ddp wrap
     model = ray.train.torch.prepare_model(
-        modelNet, parallel_strategy_kwargs={"find_unused_parameters": False}
+        modelNet,
+        parallel_strategy_kwargs={
+            "find_unused_parameters": False,
+            "broadcast_buffers": False,
+        },
     )
 
     # pass VAE to latent builder
@@ -91,7 +99,16 @@ def trainingFunction(config: dict):
     )
 
     # noise scheduler creation
-    noiseScheduler = EDMNoiseScheduler(cfg=cfg, inference=False, device=device)
+    if cfg.model.trainingStyle == "edm":
+        noiseScheduler = EDMNoiseScheduler(cfg=cfg, inference=False, device=device)
+    elif cfg.model.trainingStyle == "recflow":
+        noiseScheduler = RecFlowNoiseScheduler(cfg=cfg, inference=False, device=device)
+    else:
+        raise ValueError("Improper training style selected in config")
+
+    trainer = NoiseTrainer(
+        trainingStyle=cfg.model.trainingStyle, noiseScheduler=noiseScheduler
+    )  # pyrefly:ignore
 
     optimizer, scheduler = optimizerAndSchedulerCreator(model, cfg)
 
@@ -99,8 +116,8 @@ def trainingFunction(config: dict):
     robocasaDataloader = RoboCasaWebDataset(cfg=cfg)
 
     trainDataloader = robocasaDataloader.getDataloader()
-    
-    #augmentation maker 
+
+    # augmentation maker
     augmentationPipeline = createAugmentationPipeline()
     embeddingTableGPU = loadEmbeddingTableToGPU(cfg, device)
     # checkpoint resumption and start logic
@@ -121,7 +138,7 @@ def trainingFunction(config: dict):
     model.train()
     optimizer.zero_grad()
     for step, batch in enumerate(trainDataloader):
-        batch = gpuCollate(batch,device)
+        batch = gpuCollate(batch, device)
         # actions
         currentProprio = batch["currentproprio"].to(device, non_blocking=True)
         futureProprio = batch["futureproprio"].to(device, non_blocking=True)
@@ -143,19 +160,25 @@ def trainingFunction(config: dict):
         futureWristImg = batch["futurewristimg.jpg"].to(device, non_blocking=True)
         futureLeftImg = batch["futureleftimg.jpg"].to(device, non_blocking=True)
         futureRightImg = batch["futurerightimg.jpg"].to(device, non_blocking=True)
-        
-        #apply gpu augmentations 
-        (currentWristImg, currentLeftImg, currentRightImg, futureWristImg, 
-         futureLeftImg, futureRightImg) = applyUnifiedCameraAug(
-            currentWristImg, 
-            currentLeftImg, 
-            currentRightImg, 
-            futureWristImg, 
-            futureLeftImg, 
+
+        # apply gpu augmentations
+        (
+            currentWristImg,
+            currentLeftImg,
+            currentRightImg,
+            futureWristImg,
+            futureLeftImg,
             futureRightImg,
-            pipeline=augmentationPipeline
+        ) = applyUnifiedCameraAug(
+            currentWristImg,
+            currentLeftImg,
+            currentRightImg,
+            futureWristImg,
+            futureLeftImg,
+            futureRightImg,
+            pipeline=augmentationPipeline,
         )
-        
+
         vaeOutput = latentBuilder(  # x0 = VAE Output
             currentProprio=currentProprio,
             currentWristImg=currentWristImg,
@@ -181,64 +204,39 @@ def trainingFunction(config: dict):
         # model noising and target creation
         batchSize = currentWristImg.shape[0]
         T = vaeOutput.shape[2]
-        sigma = noiseScheduler.sampleSigma(batchSize, device=device)
-        skipSigma, outputSigma, cinSigma, noiseSigma, lossWeighting = (
-            noiseScheduler.EDMScalingFactors(sigma)
-        )
-        # b -> b,1,1,1,1
-
-        # reshaping
-        
-        sigma = sigma.view(batchSize, 1, 1, 1, 1)
-        skipSigma = skipSigma.view(batchSize, 1, 1, 1, 1)
-        outputSigma = outputSigma.view(batchSize, 1, 1, 1, 1)
-        cinSigma = cinSigma.view(batchSize, 1, 1, 1, 1)
-        noiseSigma = noiseSigma.view(batchSize, 1).repeat(1, T) #b,T
-        lossWeighting = lossWeighting.view(batchSize, 1, 1, 1, 1)
-        epsilon = torch.randn_like(vaeOutput)
-
-        xNoise = vaeOutput + (sigma * epsilon)  # xSigma = y + sigma * eps
-
-        # masking the input
-        maskedXSigma = conditioningMasks * vaeOutput + (1 - conditioningMasks) * xNoise
-        networkInput = maskedXSigma * cinSigma
-
-        
-        #padding mask 
         B, C, T, H, W = vaeOutput.shape
         paddingMask = torch.zeros(
-            B,1,H,W,device=device,dtype=torch.bfloat16,  
+            B,
+            1,
+            H,
+            W,
+            device=device,
+            dtype=torch.bfloat16,
         )
-        
-        
-        # modeloutput
-        networkOutput = model.forward(
-            latent=networkInput,
-            timesteps=noiseSigma,
+
+        loss, denoisedPrediction = trainer.forward(
+            model=model,
+            vaeOutput=vaeOutput,
             crossAttentionEmbed=crossAttentionEmbed,
-            conditionVideoMask=conditioningMasks,
-            paddingMask=paddingMask
+            device=device,
+            conditioningMasks=conditioningMasks,
+            paddingMask=paddingMask,
+            batchSize=batchSize,
+            T=T,
         )
 
-        denoisedPrediction = (maskedXSigma * skipSigma) + (networkOutput * outputSigma)
-
-        # mse loss with lambda scaling
-
-        loss = lossFunctionWeighting(
-            lossWeighting, vaeOutput, denoisedPrediction, conditioningMasks
-        )
-        
         scaledLoss = loss / gradAccum
         scaledLoss.backward()
-        
+
         if (step + 1) % gradAccum == 0:
-            clippedGradNorm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=gradClip)
+            clippedGradNorm = torch.nn.utils.clip_grad_norm_(
+                model.parameters(), max_norm=gradClip
+            )
             optimizer.step()
             scheduler.step()
             optimizer.zero_grad()
             globalStep += 1
-            
-            
+
             reportMetrics = {
                 "trainLoss": loss.item(),
                 "globalStep": globalStep,
@@ -253,7 +251,10 @@ def trainingFunction(config: dict):
                         "globalStep": globalStep,
                     }
                     tmpdir = tempfile.mkdtemp()
-                    torch.save(checkpointDict, os.path.join(tmpdir, f"checkpoint_{globalStep}.pt"))
+                    torch.save(
+                        checkpointDict,
+                        os.path.join(tmpdir, f"checkpoint_{globalStep}.pt"),
+                    )
                     checkpoint = ray.train.Checkpoint.from_directory(tmpdir)
 
             ray.train.report(reportMetrics, checkpoint=checkpoint)
@@ -287,31 +288,36 @@ def trainingFunction(config: dict):
                             "scheduler": scheduler.state_dict(),
                             "globalStep": globalStep,
                         }
-                        torch.save(checkpointDict, os.path.join(cfg.model.logging.checkpointing.checkpointSaveDir, "final_47k_model.pt"))
+                        torch.save(
+                            checkpointDict,
+                            os.path.join(
+                                cfg.model.logging.checkpointing.checkpointSaveDir,
+                                f"final_step_{cfg.model.training.maxSteps}.pt",
+                            ),
+                        )
                     break
-        
-                
+
     if rank == 0:
-        wandb.finish()    
-        
+        wandb.finish()
+
+
 if __name__ == "__main__":
     cfg = OmegaConf.load("configs/config.yaml")
     cfg.dataset = OmegaConf.load("configs/dataset/robocasa.yaml")
-    cfg.model = OmegaConf.load("configs/model/policy.yaml")
-    cfg.inference = OmegaConf.load("configs/inference/rollout.yaml")
-    #ray 
-    
-    ray.init( #pyrefly:ignore
-        ignore_reinit_error=True #pyrefly:ignore
-    )
+    cfg.model = OmegaConf.load("configs/model/policyRecFlow.yaml")
+    cfg.inference = OmegaConf.load("configs/inference/rolloutRecFlow.yaml")
+    # ray
+
+    ray.init(ignore_reinit_error=True)
 
     trainConfig = {
         "cfg": cfg,
     }
-    
+
     trainer = TorchTrainer(
         train_loop_per_worker=trainingFunction,
         train_loop_config=trainConfig,
+        torch_config=TorchConfig(backend="nccl"),  
         scaling_config=ScalingConfig(  # pyrefly:ignore
             num_workers=cfg.model.resources.scaling.totalWorkers,
             use_gpu=True,
@@ -334,4 +340,3 @@ if __name__ == "__main__":
     result = trainer.fit()
 
     ray.shutdown()  # pyrefly:ignore
-    
