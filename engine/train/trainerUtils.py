@@ -1,7 +1,7 @@
 from multiprocessing import Value
 import torch
 from omegaconf import DictConfig
-from torch.optim import Adam
+from torch.optim import AdamW
 from torch.optim.lr_scheduler import (
     CosineAnnealingLR,
     SequentialLR,
@@ -214,11 +214,11 @@ class NoiseTrainer:
             )
 
 
-def optimizerAndSchedulerCreator(model, cfg: DictConfig) -> tuple[Adam, SequentialLR]:
+def optimizerAndSchedulerCreator(model, cfg: DictConfig) -> tuple[AdamW, SequentialLR]:
     cfgOptimizer = cfg.model.training.optimizer
     cfgScheduler = cfg.model.training.scheduler
 
-    optimizer = Adam(
+    optimizer = AdamW(
         model.parameters(),
         lr=cfgOptimizer.lr,
         betas=tuple(cfgOptimizer.betas),  # pyrefly:ignore
@@ -328,27 +328,20 @@ def lossFunctionWeighting(
     targetMask = 1.0 - conditioningMasks
     perPixelMSE = (denoisedPrediction - vaeOutput) ** 2
     maskedMSE = perPixelMSE * targetMask * lossWeighting
-    lossPerSample = maskedMSE.sum(dim=[1, 2, 3, 4])
-    validElementsPerSample = (
-        (targetMask * lossWeighting).sum(dim=[1, 2, 3, 4]).clamp_min(1.0)
-    )
-
-    meanLossPerSample = lossPerSample / validElementsPerSample
-    loss = meanLossPerSample.mean()
+    loss = maskedMSE.mean()
 
     return loss
 
-
-def lossFunctionUnWeighting(vaeOutput, denoisedPrediction, conditioningMasks):
+# from source code. 
+def lossFunctionUnWeighting(vaeOutput, denoisedPrediction, conditioningMasks,actionMultiplier:int=16):
     B, C, T, H, W = vaeOutput.shape
     targetMask = 1.0 - conditioningMasks
+    perFrameWeight = torch.ones(B, T, device=vaeOutput.device, dtype=vaeOutput.dtype)
+    perFrameWeight[:, 5] = actionMultiplier #config later 
+    
     perPixelMSE = (denoisedPrediction - vaeOutput) ** 2
-    maskedMSE = perPixelMSE * targetMask
-    lossPerSample = maskedMSE.sum(dim=[1, 2, 3, 4])
-    validElementsPerSample = (targetMask).sum(dim=[1, 2, 3, 4]).clamp_min(1.0)
-
-    meanLossPerSample = lossPerSample / validElementsPerSample
-    loss = meanLossPerSample.mean()
+    maskedMSE = perPixelMSE * targetMask * perFrameWeight[:, None, :, None, None]
+    loss = maskedMSE.mean()
 
     return loss
 

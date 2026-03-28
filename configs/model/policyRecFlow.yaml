@@ -8,7 +8,7 @@ training:
     lr: 2e-4
     betas: [0.9, 0.999]
     eps: 1e-8
-    weight_decay: 0.0
+    weight_decay: 0.1
 
   scheduler:
     linear:
@@ -18,7 +18,7 @@ training:
 
     cosine:
       TMax: 41000
-      etaMin: 0.3
+      etaMin: 0.06
     
     flatlineScheduler:
       factor: 0.06
@@ -52,12 +52,12 @@ logging:
 
 resources:
   scaling:
-    totalWorkers: 1
+    totalWorkers: 8
     resourcesPerWorker:
-      CPU: 4
+      CPU: 6
       GPU: 1
   dataloader:
     batchSize: 100
-    numWorkers: 3
-    prefetchFactor: 2
+    numWorkers: 4
+    prefetchFactor: 5
     pinMemory: True

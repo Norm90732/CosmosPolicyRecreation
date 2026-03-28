@@ -232,7 +232,7 @@ def distributedRobocasaWorker(
 
     episodeData = roboEnv.prepareHistoryExport()
     fileName = (
-        f"task={taskName}--ep={episodeIDX}--success={episodeData['success']}.hdf5"
+        f"task={taskName}--ep={episodeIDX}--seed{seed}--success={episodeData['success']}.hdf5"
     )
     ray.get(HDF5Writer.saveEpisode.remote(episodeData, fileName))
     roboEnv.close()
