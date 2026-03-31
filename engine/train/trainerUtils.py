@@ -140,7 +140,7 @@ class NoiseTrainer:
             lossWeighting, vaeOutput, denoisedPrediction, conditioningMasks
         )
 
-        return loss, denoisedPrediction
+        return loss, vaeOutput, denoisedPrediction
 
     def _RecFlowForward(
         self,
@@ -174,10 +174,9 @@ class NoiseTrainer:
         )
 
         loss = lossFunctionUnWeighting(target, velocityPred, conditioningMasks)
-        with torch.no_grad():
-            x1Prediction = xt - tExpand * velocityPred
+        
 
-        return loss, x1Prediction
+        return loss, target, velocityPred
 
     def forward(
         self,

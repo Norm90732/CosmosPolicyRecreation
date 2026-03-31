@@ -42,7 +42,7 @@ logging:
   l1LogEvery: 100
   wandb:
     project: "CosmosPolicyRecreation"
-    name: "Stage1-Run-45k-RecFlow"
+    name: "Stage1-Run-45k-RecFlow-Testing"
   checkpointing: 
     resumeCheckpoint: null 
     checkpointEvery: 500

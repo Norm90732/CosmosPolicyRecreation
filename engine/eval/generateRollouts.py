@@ -36,7 +36,7 @@ def runRollOutCollection(cfg: DictConfig):
         for taskName in cfg.inference.robocasaEnvs:
             maxSteps = taskMaxSteps[taskName]  # pyrefly:ignore
             for episodeIDX in range(numTrials):
-                envSeed = baseSeed * episodeIDX * 256
+                envSeed = baseSeed + (episodeIDX * 256)
                 future = distributedRobocasaWorker.remote(
                     cfg=cfgDict,  # pyrefly:ignore
                     taskName=taskName,  # pyrefly:ignore
@@ -82,8 +82,13 @@ def runRollOutCollection(cfg: DictConfig):
         "taskSummary": taskSummary,
         "episodeLogs": episodeLogs,
     }
+    
+    shift = cfg.inference.noiseScheduler.logitShift
+    steps = cfg.inference.solver.actionSteps
+    fileName = f"rollOutResults_shift{shift}_steps{steps}.json"
+    
 
-    savePath = Path(cfg.inference.jsonSaveDir) / "rollOutResults.json"
+    savePath = Path(cfg.inference.jsonSaveDir) / fileName
     savePath.parent.mkdir(parents=True, exist_ok=True)
     with open(savePath, "w") as f:
         json.dump(fullResults, f, indent=2)
@@ -95,7 +100,7 @@ def runRollOutCollection(cfg: DictConfig):
 if __name__ == "__main__":
     cfg = OmegaConf.load("configs/config.yaml")
     cfg.dataset = OmegaConf.load("configs/dataset/robocasaRollout.yaml")
-    cfg.model = OmegaConf.load("configs/model/policy.yaml")
-    cfg.inference = OmegaConf.load("configs/inference/rollout.yaml")
+    cfg.model = OmegaConf.load("configs/model/policyRecFlow.yaml")
+    cfg.inference = OmegaConf.load("configs/inference/rolloutRecFlow.yaml")
 
     runRollOutCollection(cfg)  # pyrefly:ignore

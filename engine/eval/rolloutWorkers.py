@@ -245,7 +245,10 @@ class HDF5Writer:
         if not isinstance(cfg, DictConfig):
             cfg = OmegaConf.create(cfg)  # pyrefly:ignore
         self.cfg = cfg
-        self.saveDir = Path(saveDir)
+        shift = cfg.inference.noiseScheduler.logitShift
+        steps = cfg.inference.solver.actionSteps
+        subDirName = f"shift{shift}_steps{steps}"
+        self.saveDir = Path(saveDir) / subDirName
         self.saveDir.mkdir(parents=True, exist_ok=True)
 
     def _jpegDecode(self, jpegBytes: bytes):
@@ -258,7 +261,7 @@ class HDF5Writer:
         return np.frombuffer(buf.getvalue(), dtype=np.uint8)
 
     def saveEpisode(self, exportDict: dict, fileName: str) -> str:
-        savePath = self.saveDir / fileName
+        savePath = self.saveDir / fileName 
         T = exportDict["primary_images"].shape[0]
         dt = h5py.vlen_dtype(np.dtype("uint8"))
 

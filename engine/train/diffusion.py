@@ -17,7 +17,10 @@ class RecFlowNoiseScheduler:
         self.logitShift = noiseSchedulerCFG.logitShift
 
     def sampleTimestep(self, batch: int, device: torch.device) -> Tensor:
-        t = torch.sigmoid(self.logitShift + torch.randn(batch, device=device))
+        z = torch.randn(batch, device=device)
+        tSample = torch.sigmoid(z)
+        s = self.logitShift
+        t = (s * tSample) / (1.0 + (s - 1.0) * tSample)
         return t
 
 
