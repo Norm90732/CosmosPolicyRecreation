@@ -13,24 +13,26 @@ https://research.nvidia.com/labs/dir/cosmos-policy/cosmos_policy_index.html
 > **Contact:** normansmith@ufl.edu
 # 
 
+Top View: Simulator Actions
+
+Bottom View: Predicted Future State
+#### To Counter
+![To Counter](assets/toCounter.gif)
+
 #### Setup Mug
-<video src="assets/setupMug.mp4" controls width="600"></video>
+![Setup Mug](assets/setupMug.gif)
 
 #### Double Door
-<video src="assets/doubleDoor.mp4" controls width="600"></video>
-
-#### To Counter
-<video src="assets/toCounter.mp4" controls width="600"></video>
+![Double Door](assets/doubleDoor.gif)
 
 #### Coffee Serve Mug
-<video src="assets/coffeeServeMug.mp4" controls width="600"></video>
+![Coffee Serve Mug](assets/coffeeServeMug.gif)
 
 #### Pick and Place 
-![First Gif](assets/firstGif.gif)
+![Pick and Place](assets/firstGif.gif)
 
 #### Turn Sink Spout
-![second Gif](assets/secondGif.gif)
-
+![Turn Sink Spout](assets/secondGif.gif)
 
 ## Evaluation Metrics
 ### RoboCasa Simulation Results
