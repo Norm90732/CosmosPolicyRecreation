@@ -7,6 +7,7 @@ from cosmos_predict2._src.predict2.cosmos_policy.modules.cosmos_sampler import (
 from cosmos_predict2._src.predict2.models.fm_solvers_unipc import (
     FlowUniPCMultistepScheduler,
 )
+from diffusers import FlowMatchEulerDiscreteScheduler
 from omegaconf import DictConfig, OmegaConf
 from einops import rearrange
 
@@ -114,7 +115,6 @@ class CosmosInferenceSolverRecFlow:
         )
 
         noiseSchedulerCFG = cfg.inference.noiseScheduler
-
         self.logitShift = noiseSchedulerCFG.logitShift
 
         self.scheduler = FlowUniPCMultistepScheduler(
@@ -122,35 +122,34 @@ class CosmosInferenceSolverRecFlow:
             prediction_type="flow_prediction",
             shift=self.logitShift,
             solver_order=2,
-            solver_type="bh1",  # change to bh2 for more than 10 steps,
+            solver_type="bh2",  
             lower_order_final=True,
             disable_corrector=[0],
         )
 
     @torch.no_grad()
-    def denoiser(self, xt, t, crossAttentionEmbed, conditioningMasks):
+    def denoiser(self, pureNoise, xt, t, crossAttentionEmbed, conditioningMasks, builtVAEInput):
         batchSize = xt.shape[0]
         T = xt.shape[2]
 
         tInputNetwork = t.view(batchSize, 1).repeat(1, T)
-
+        xtModified = (conditioningMasks * builtVAEInput) + (1 - conditioningMasks) * xt
+        
         B, C, T, H, W = xt.shape
         paddingMask = torch.zeros(
-            B,
-            1,
-            H,
-            W,
-            device=self.device,
-            dtype=torch.bfloat16,
+            B, 1, H, W, device=self.device, dtype=torch.bfloat16,
         )
 
         velocityPrediction = self.diffusionModel.forward(
-            latent=xt,
+            latent=xtModified,
             timesteps=tInputNetwork,
             crossAttentionEmbed=crossAttentionEmbed,
             conditionVideoMask=conditioningMasks,
             paddingMask=paddingMask,
         )
+        
+        gtFramesVelocity = pureNoise - builtVAEInput
+        velocityPrediction = (conditioningMasks * gtFramesVelocity) + (1 - conditioningMasks) * velocityPrediction
 
         return velocityPrediction
 
@@ -158,31 +157,40 @@ class CosmosInferenceSolverRecFlow:
         self, builtVAEInput, crossAttentionEmbed, conditioningMasks, numSteps
     ):
         batch = builtVAEInput.shape[0]
+ 
         pureNoise = torch.randn_like(builtVAEInput)
-        sample = conditioningMasks * builtVAEInput + (1 - conditioningMasks) * pureNoise
+        sample = pureNoise.clone()
 
         self.scheduler.set_timesteps(
             num_inference_steps=numSteps,
             shift=self.logitShift,
             device=self.device,
         )
+        
         for timestep in self.scheduler.timesteps:
-            sigma = timestep.float() / 1000
-            tModel = (sigma).expand(batch).to(self.device)
+            sigma = timestep.float() / self.scheduler.config.num_train_timesteps #pyrefly:ignore
+            tModel = torch.full((batch,), sigma.item(), device=self.device, dtype=sample.dtype)
+       
             velocity = self.denoiser(
-                sample, tModel, crossAttentionEmbed, conditioningMasks
+                pureNoise=pureNoise,
+                xt=sample,
+                t=tModel,
+                crossAttentionEmbed=crossAttentionEmbed,
+                conditioningMasks=conditioningMasks,
+                builtVAEInput=builtVAEInput
             )
 
             result = self.scheduler.step(
                 model_output=velocity, timestep=timestep, sample=sample
             )
+            sample = result.prev_sample  #pyrefly:ignore
 
-            sample = (
-                conditioningMasks * builtVAEInput
-                + (1 - conditioningMasks) * result.prev_sample
-            )  # pyrefly:ignore
+        finalSample = (
+            conditioningMasks * builtVAEInput
+            + (1 - conditioningMasks) * sample
+        )
 
-        return sample
+        return finalSample
 
 
 # Action prediction builder

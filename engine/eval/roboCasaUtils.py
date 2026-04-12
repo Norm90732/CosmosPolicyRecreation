@@ -100,8 +100,8 @@ if __name__ == "__main__":
     from omegaconf import OmegaConf
     cfg = OmegaConf.load("configs/config.yaml")
     cfg.dataset = OmegaConf.load("configs/dataset/robocasaRollout.yaml")
-    cfg.model = OmegaConf.load("configs/model/policy.yaml")
-    cfg.inference = OmegaConf.load("configs/inference/rollout.yaml")
+    cfg.model = OmegaConf.load("configs/model/policyRecFlow.yaml")
+    cfg.inference = OmegaConf.load("configs/inference/rolloutRecFlow.yaml")
     
     vae, textEncoder, net, config = loadCosmosModules(cfg) #pyrefly:ignore 
     modelVAE = DecoderVAE(vae)
@@ -113,7 +113,8 @@ if __name__ == "__main__":
     device = torch.device("cuda")
     
     saveDir = "/home/normansmith/blue_storage/projects/CosmosPolicyRecreation"
-    renderRobocasa(modelVAE,rolloutPath="/home/normansmith/blue_storage/projects/CosmosPolicyRecreation/task=OpenDoubleDoor--ep=40--success=True.hdf5", gifName="openDoubleDoor.gif",saveDir=saveDir,device=device)
-    renderRobocasa(modelVAE,rolloutPath="/home/normansmith/blue_storage/projects/CosmosPolicyRecreation/task=PnPCounterToCab--ep=12--success=True.hdf5", gifName="counterToCabinet.gif",saveDir=saveDir,device=device)
-    renderRobocasa(modelVAE,rolloutPath="/home/normansmith/blue_storage/projects/CosmosPolicyRecreation/task=TurnSinkSpout--ep=40--success=True.hdf5", gifName="TurnSinkSpout.gif",saveDir=saveDir,device=device)
-"""
+    renderRobocasa(modelVAE,rolloutPath="/home/normansmith/blue_storage/projects/CosmosPolicyRecreation/rollouts/shift5_steps35/task=CoffeeServeMug--ep=13--seed3523--success=True.hdf5", gifName="coffeeServeMug.gif",saveDir=saveDir,device=device)
+    renderRobocasa(modelVAE,rolloutPath="/home/normansmith/blue_storage/projects/CosmosPolicyRecreation/rollouts/shift5_steps35/task=OpenDoubleDoor--ep=13--seed3523--success=True.hdf5", gifName="doubleDoor.gif",saveDir=saveDir,device=device)
+    renderRobocasa(modelVAE,rolloutPath="/home/normansmith/blue_storage/projects/CosmosPolicyRecreation/rollouts/shift5_steps35/task=CoffeeSetupMug--ep=44--seed11460--success=True.hdf5", gifName="setupMug.gif",saveDir=saveDir,device=device)
+    renderRobocasa(modelVAE,rolloutPath="/home/normansmith/blue_storage/projects/CosmosPolicyRecreation/rollouts/shift5_steps35/task=PnPCounterToCab--ep=24--seed6339--success=True.hdf5", gifName="toCounter.gif",saveDir=saveDir,device=device)
+""""

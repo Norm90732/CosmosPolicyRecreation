@@ -11,30 +11,51 @@ https://research.nvidia.com/labs/dir/cosmos-policy/cosmos_policy_index.html
 > **Developer:** Norman Smith 
 > 
 > **Contact:** normansmith@ufl.edu
-# Results
+# 
+
+#### Setup Mug
+<video src="assets/setupMug.mp4" controls width="600"></video>
+
+#### Double Door
+<video src="assets/doubleDoor.mp4" controls width="600"></video>
+
+#### To Counter
+<video src="assets/toCounter.mp4" controls width="600"></video>
+
+#### Coffee Serve Mug
+<video src="assets/coffeeServeMug.mp4" controls width="600"></video>
+
+#### Pick and Place 
 ![First Gif](assets/firstGif.gif)
 
-*Task: Pick and Place from Counter to Cabinet.*
-
+#### Turn Sink Spout
 ![second Gif](assets/secondGif.gif)
 
-*Task: Turn the Sink Spout.*
 
-![third Gif](assets/thirdGif.gif)
-
-*Task: Open both Cabinet Doors.*
 ## Evaluation Metrics
 ### RoboCasa Simulation Results
-I initially trained Predict 2.5 with Predict2 hyperparameters. I just found Cosmos Cookbook has an updated hyperparam config for training Cosmos Policy with Predict 2.5 backbone (recflow instead of edm). Starting second run with updated noise distribution and scheduler. First run was with Predict2 numbers from Paper.
 | Model / Run              | Backbone      | Demos / Task | Avg SR (%) | Training setup                       |
 |--------------------------|---------------|--------------|-----------:|--------------------------------------|
 | Cosmos Policy (paper)    | Predict2      | 50           | 67.1       | Paper (Predict2 config)             |
 | Cosmos Policy (cookbook) | Predict2.5    | 50           | 71.1       | Cookbook (Predict2.5 config)        |
-| My Implementation       | Predict2.5    | 50           | TBD        | Predict2.5 hyperparams (current)    |
+| My Implementation       | Predict2.5    | 50           | 65.2        | Predict2.5 Hyperparams    |
 
 
 ## Training Loss Curves 
-place holder for final curve results 
+| Loss | Predict 2.5 Range | My Recreation |
+|------|-------------------|--------|
+| Action L1 | ~0.010–0.015 | 0.014 | 
+| Future proprio L1 | ~0.01 | 0.008|
+| Future image latent L1 | ~0.05–0.09 | 0.063|
+| Value L1 | ~0.008 | 0.0059|
+
+*Comparison between paper reported L1 and my recreation L1.*
+
+![Training Loss Curves](assets/mseLoss.png)
+*Unweighted MSE loss over 45k steps at 800 global batch.*
+
+![L1 Action Graph](assets/l1ActionGraph.png)
+*L1 loss of policy action predictions during training.*
 
 # Architecture
 
