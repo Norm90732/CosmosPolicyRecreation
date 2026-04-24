@@ -5,12 +5,12 @@ This repository is a clean, from-scratch reimplementation of **Cosmos Policy** a
 **Cosmos Policy: Fine-Tuning Video Models for Visuomotor Control and Planning**
 
 Original project page (NVIDIA Research):  
-https://research.nvidia.com/labs/dir/cosmos-policy/cosmos_policy_index.html
+https://research.nvidia.com/labs/cosmos-lab/cosmos-policy/ 
 
 
 > **Developer:** Norman Smith 
 > 
-> **Contact:** normansmith@ufl.edu
+> **Contact:** normansmith@ufl.edu or +1 941-209-0527
 # 
 
 Top View: Simulator Actions
